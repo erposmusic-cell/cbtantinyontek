@@ -96,73 +96,116 @@ export default function ImportSoalModal({ open, onClose, onImport }) {
                   href="/template-soal.docx"
                   download
                   className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                  onClick={async (e) => {
+                  onClick={(e) => {
                     e.preventDefault();
-                    // Load docx library dari CDN
-                    if (!window.docx) {
-                      await new Promise((resolve, reject) => {
-                        const script = document.createElement('script');
-                        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js';
-                        script.onload = resolve;
-                        script.onerror = () => reject(new Error('Gagal memuat docx library'));
-                        document.head.appendChild(script);
+
+                    // Helper XML paragraf Word
+                    const esc = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    const p = (text, opts = {}) => {
+                      const bold = opts.bold ? '<w:b/>' : '';
+                      const font = opts.mono ? '<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/>' : '';
+                      return `<w:p><w:r><w:rPr>${bold}${font}</w:rPr><w:t xml:space="preserve">${esc(text)}</w:t></w:r></w:p>`;
+                    };
+
+                    const body = [
+                      p('TEMPLATE SOAL - FORMAT WORD', { bold: true }),
+                      p('Gunakan format di bawah ini untuk mengimpor soal.'),
+                      p(''),
+                      p('FORMAT PILIHAN GANDA', { bold: true }),
+                      p('1. Contoh soal pilihan ganda di sini?', { mono: true }),
+                      p('A. Jawaban A', { mono: true }),
+                      p('B. Jawaban B', { mono: true }),
+                      p('C. Jawaban C', { mono: true }),
+                      p('D. Jawaban D', { mono: true }),
+                      p('Jawaban: A', { mono: true }),
+                      p(''),
+                      p('FORMAT MCMA (Pilih Semua yang Benar)', { bold: true }),
+                      p('2. Contoh soal MCMA, pilih semua yang benar?', { mono: true }),
+                      p('A. Opsi pertama', { mono: true }),
+                      p('B. Opsi kedua', { mono: true }),
+                      p('C. Opsi ketiga', { mono: true }),
+                      p('D. Opsi keempat', { mono: true }),
+                      p('Kunci: A,C', { mono: true }),
+                      p(''),
+                      p('FORMAT ESSAY', { bold: true }),
+                      p('3. Jelaskan pengertian dari konsep berikut ini!', { mono: true }),
+                      p('(Essay tidak perlu kunci jawaban)'),
+                      p(''),
+                      p('FORMAT BENAR/SALAH', { bold: true }),
+                      p('4. Tentukan Benar atau Salah pernyataan berikut!', { mono: true }),
+                      p('A. Pernyataan pertama', { mono: true }),
+                      p('B. Pernyataan kedua', { mono: true }),
+                      p('C. Pernyataan ketiga', { mono: true }),
+                      p('D. Pernyataan keempat', { mono: true }),
+                      p('Jawaban: BENAR,SALAH,BENAR,SALAH', { mono: true }),
+                      p(''),
+                      p('CATATAN PENTING', { bold: true }),
+                      p('- Nomor soal diawali angka + titik: "1."'),
+                      p('- Pilihan diawali huruf + titik atau kurung: "A." atau "A)"'),
+                      p('- Kunci jawaban: "Jawaban: A" atau "Kunci: A,C" untuk MCMA'),
+                    ].join('');
+
+                    const files = {
+                      '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+                      '_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+                      'word/document.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr/></w:body></w:document>`,
+                      'word/_rels/document.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>',
+                    };
+
+                    // Buat ZIP murni (tanpa library) — DOCX adalah file ZIP
+                    const enc = new TextEncoder();
+                    const le2 = (n) => [n & 0xFF, (n >> 8) & 0xFF];
+                    const le4 = (n) => [n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >> 24) & 0xFF];
+                    const crc32 = (data) => {
+                      const t = Array.from({ length: 256 }, (_, i) => {
+                        let c = i;
+                        for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+                        return c;
                       });
+                      let crc = 0xFFFFFFFF;
+                      for (const b of data) crc = t[(crc ^ b) & 0xFF] ^ (crc >>> 8);
+                      return (crc ^ 0xFFFFFFFF) >>> 0;
+                    };
+
+                    const locals = [], cds = [];
+                    let offset = 0;
+                    for (const [name, content] of Object.entries(files)) {
+                      const nb = enc.encode(name);
+                      const db = enc.encode(content);
+                      const crc = crc32(db);
+                      const sz = db.length;
+                      const lh = new Uint8Array([
+                        0x50,0x4B,0x03,0x04,0x14,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+                        ...le4(crc),...le4(sz),...le4(sz),...le2(nb.length),0x00,0x00,...nb,
+                      ]);
+                      cds.push({ nb, crc, sz, offset });
+                      locals.push(lh, db);
+                      offset += lh.length + db.length;
                     }
-                    const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = window.docx;
+                    const cdStart = offset;
+                    const cdParts = [];
+                    for (const { nb, crc, sz, offset: fo } of cds) {
+                      const cd = new Uint8Array([
+                        0x50,0x4B,0x01,0x02,0x14,0x00,0x14,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+                        ...le4(crc),...le4(sz),...le4(sz),...le2(nb.length),
+                        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,...le4(fo),...nb,
+                      ]);
+                      cdParts.push(cd);
+                      offset += cd.length;
+                    }
+                    const cdSize = offset - cdStart;
+                    const eocd = new Uint8Array([
+                      0x50,0x4B,0x05,0x06,0x00,0x00,0x00,0x00,
+                      ...le2(cds.length),...le2(cds.length),...le4(cdSize),...le4(cdStart),0x00,0x00,
+                    ]);
+                    const all = [...locals, ...cdParts, eocd];
+                    const total = all.reduce((s, a) => s + a.length, 0);
+                    const zip = new Uint8Array(total);
+                    let pos = 0;
+                    for (const a of all) { zip.set(a, pos); pos += a.length; }
 
-                    const bold = (text) => new TextRun({ text, bold: true });
-                    const normal = (text) => new TextRun({ text });
-                    const mono = (text) => new TextRun({ text, font: 'Courier New' });
-
-                    const doc = new Document({
-                      sections: [{
-                        children: [
-                          new Paragraph({ heading: HeadingLevel.HEADING_1, children: [bold('Template Soal - Format Word')] }),
-                          new Paragraph({ children: [normal('Gunakan format di bawah ini untuk mengimpor soal. Setiap soal diawali dengan nomor urut.')] }),
-                          new Paragraph({}),
-
-                          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [bold('Format Pilihan Ganda')] }),
-                          new Paragraph({ children: [mono('1. Contoh soal pilihan ganda di sini?')] }),
-                          new Paragraph({ children: [mono('A. Jawaban A')] }),
-                          new Paragraph({ children: [mono('B. Jawaban B')] }),
-                          new Paragraph({ children: [mono('C. Jawaban C')] }),
-                          new Paragraph({ children: [mono('D. Jawaban D')] }),
-                          new Paragraph({ children: [mono('Jawaban: A')] }),
-                          new Paragraph({}),
-
-                          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [bold('Format MCMA (Pilih Semua yang Benar)')] }),
-                          new Paragraph({ children: [mono('2. Contoh soal MCMA, pilih semua yang benar?')] }),
-                          new Paragraph({ children: [mono('A. Opsi pertama')] }),
-                          new Paragraph({ children: [mono('B. Opsi kedua')] }),
-                          new Paragraph({ children: [mono('C. Opsi ketiga')] }),
-                          new Paragraph({ children: [mono('D. Opsi keempat')] }),
-                          new Paragraph({ children: [mono('Kunci: A,C')] }),
-                          new Paragraph({}),
-
-                          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [bold('Format Essay')] }),
-                          new Paragraph({ children: [mono('3. Jelaskan pengertian dari konsep berikut ini!')] }),
-                          new Paragraph({ children: [normal('(Essay tidak perlu kunci jawaban)')] }),
-                          new Paragraph({}),
-
-                          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [bold('Format Benar/Salah')] }),
-                          new Paragraph({ children: [mono('4. Tentukan Benar atau Salah pernyataan berikut!')] }),
-                          new Paragraph({ children: [mono('A. Pernyataan pertama')] }),
-                          new Paragraph({ children: [mono('B. Pernyataan kedua')] }),
-                          new Paragraph({ children: [mono('C. Pernyataan ketiga')] }),
-                          new Paragraph({ children: [mono('D. Pernyataan keempat')] }),
-                          new Paragraph({ children: [mono('Jawaban: BENAR,SALAH,BENAR,SALAH')] }),
-                          new Paragraph({}),
-
-                          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [bold('Catatan Penting')] }),
-                          new Paragraph({ children: [normal('- Nomor soal diawali angka diikuti titik: "1."')] }),
-                          new Paragraph({ children: [normal('- Pilihan diawali huruf + titik atau kurung: "A." atau "A)"')] }),
-                          new Paragraph({ children: [normal('- Kunci jawaban: "Jawaban: A" atau "Kunci: A,C" (untuk MCMA)')] }),
-                        ],
-                      }],
-                    });
-
-                    const buffer = await Packer.toBlob(doc);
-                    const url = URL.createObjectURL(buffer);
+                    const blob = new Blob([zip], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+                    const url = URL.createObjectURL(blob);
                     const a = document.createElement('a'); a.href = url; a.download = 'template-soal.docx'; a.click();
                     URL.revokeObjectURL(url);
                   }}
