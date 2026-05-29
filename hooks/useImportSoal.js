@@ -138,11 +138,32 @@ export function useImportSoal() {
 
       // ── EXCEL / CSV ──
       if (['xlsx', 'xls', 'csv'].includes(ext)) {
+        // Tangani CSV secara terpisah — SheetJS kadang gagal membaca CSV
+        // sebagai ZIP dan melempar error "Corrupted zip"
+        if (ext === 'csv') {
+          const text = await file.text();
+          const XLSX = await loadSheetJS();
+          const wb   = XLSX.read(text, { type: 'string' });
+          const ws   = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          const startRow = rows[0]?.[0]?.toString().toLowerCase().includes('tipe') ? 1 : 0;
+          const soalList = rows.slice(startRow)
+            .map((r, i) => rowToSoal(r, i))
+            .filter(Boolean);
+          setPreview(soalList);
+        } else {
         const XLSX = await loadSheetJS();
         const ab   = await file.arrayBuffer();
-        // FIX: gunakan Uint8Array agar SheetJS bisa membaca ArrayBuffer dengan benar
-        const data  = new Uint8Array(ab);
-        const wb   = XLSX.read(data, { type: 'array' });
+        const data = new Uint8Array(ab);
+        let wb;
+        try {
+          wb = XLSX.read(data, { type: 'array', cellDates: true });
+        } catch (parseErr) {
+          throw new Error(
+            `Gagal membaca file Excel: ${parseErr.message}. ` +
+            'Pastikan file tidak rusak dan formatnya .xlsx atau .xls yang valid.'
+          );
+        }
         const ws   = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
@@ -153,6 +174,7 @@ export function useImportSoal() {
           .filter(Boolean);
 
         setPreview(soalList);
+        } // end else xlsx/xls
       }
 
       // ── WORD ──
