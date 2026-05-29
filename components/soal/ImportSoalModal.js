@@ -6,7 +6,7 @@
  *   onImport    : (soalList) => void   // dipanggil saat user klik "Simpan ke Bank Soal"
  *   mataPelajaranId : string
  */
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useImportSoal } from '../../hooks/useImportSoal';
 
 const TIPE_LABEL = {
@@ -28,6 +28,14 @@ export default function ImportSoalModal({ open, onClose, onImport }) {
   const { importFile, importing, preview, error, fileName, clearPreview } = useImportSoal();
   const [selected, setSelected] = useState(new Set());
   const [saving, setSaving] = useState(false);
+
+  // Reset state setiap kali modal dibuka
+  useEffect(() => {
+    if (open) {
+      clearPreview();
+      setSelected(new Set());
+    }
+  }, [open]);
 
   if (!open) return null;
 
