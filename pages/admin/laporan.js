@@ -30,7 +30,7 @@ export default function LaporanPage() {
     const { data } = await supabase
       .from('ujian')
       .select('*, mata_pelajaran(nama)')
-      .order('dibuat_pada', { ascending: false });
+      .order('created_at', { ascending: false });
     setUjianList(data || []);
   }
 
@@ -52,7 +52,7 @@ export default function LaporanPage() {
       .from('log_pelanggaran')
       .select('*')
       .eq('ujian_id', ujian.id)
-      .order('timestamp', { ascending: false });
+      .order('created_at', { ascending: false });
 
     const siswaList = (sesiList || []).map(s => ({
       id:                s.siswa_id,
