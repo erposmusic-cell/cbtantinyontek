@@ -1,14 +1,17 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
 export function useAntiCheat({ enabled, config, sesiId, siswaId, ujianId, onViolation, onLock }) {
   const isActive = useRef(false);
   const violationCount = useRef(0);
+  // FIX BUG #6: Tambahkan state untuk violationCount agar nilai yang dikembalikan reactive
+  const [violationCountState, setViolationCountState] = useState(0);
 
   const reportViolation = useCallback(async (tipe, deskripsi, tingkat = 'sedang') => {
     if (!isActive.current) return;
 
     violationCount.current += 1;
+    setViolationCountState(violationCount.current); // FIX BUG #6: sync ke state agar reactive
     const v = { tipe, deskripsi, tingkat, timestamp: new Date().toISOString() };
     onViolation?.(v);
 
@@ -24,8 +27,12 @@ export function useAntiCheat({ enabled, config, sesiId, siswaId, ujianId, onViol
         timestamp: v.timestamp,
       });
 
-      // Update jumlah pelanggaran di sesi
-      await supabase.rpc('increment_pelanggaran', { p_sesi_id: sesiId });
+      // Update jumlah pelanggaran di sesi secara atomic
+      try {
+        await supabase.rpc('increment_pelanggaran', { p_sesi_id: sesiId });
+      } catch {
+        // RPC gagal tidak boleh menghentikan proses anti-cheat
+      }
     }
 
     // Kunci jika melebihi batas
@@ -130,5 +137,5 @@ export function useAntiCheat({ enabled, config, sesiId, siswaId, ujianId, onViol
     };
   }, [enabled, config, reportViolation]);
 
-  return { violationCount: violationCount.current };
+  return { violationCount: violationCountState }; // FIX BUG #6: kembalikan state, bukan ref
 }
