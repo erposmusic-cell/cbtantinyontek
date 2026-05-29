@@ -105,11 +105,13 @@ export default function SiswaUjianPage() {
   }
 
   function finishExam(result) {
-    // Hitung nilai sederhana
+    // FIX: simpan ujian dari examState ke variabel lokal SEBELUM setExamState(null)
+    // agar tidak terjadi race condition saat React re-render
+    const ujianSnapshot = examState.ujian;
     const totalBobot = examState.soal.reduce((s, q) => s + (q.bobot || 1), 0);
     const nilai = Math.round((result.answered / result.totalSoal) * 100);
+    setExamResult({ ...result, nilai, ujian: ujianSnapshot });
     setExamState(null);
-    setExamResult({ ...result, nilai, ujian: examState.ujian });
   }
 
   if (loading || !user) return null;
