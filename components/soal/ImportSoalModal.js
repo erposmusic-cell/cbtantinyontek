@@ -92,6 +92,56 @@ export default function ImportSoalModal({ open, onClose, onImport }) {
                 >
                   📄 Download Template CSV
                 </a>
+                <a
+                  href="/template-soal.docx"
+                  download
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    // Buat template Word dalam format teks plain
+                    const wordTemplate = `TEMPLATE SOAL - FORMAT WORD
+=============================
+
+FORMAT PILIHAN GANDA:
+1. Contoh soal pilihan ganda di sini?
+A. Jawaban A
+B. Jawaban B
+C. Jawaban C
+D. Jawaban D
+Jawaban: A
+
+2. Contoh soal MCMA (pilih semua yang benar)?
+A. Opsi pertama
+B. Opsi kedua
+C. Opsi ketiga
+D. Opsi keempat
+Kunci: A,C
+
+FORMAT ESSAY:
+3. Jelaskan pengertian dari konsep berikut ini!
+Jawaban: (essay tidak perlu kunci)
+
+FORMAT BENAR/SALAH:
+4. Pernyataan berikut, tentukan Benar atau Salah!
+A. Pernyataan pertama
+B. Pernyataan kedua
+C. Pernyataan ketiga
+D. Pernyataan keempat
+Jawaban: BENAR,SALAH,BENAR,SALAH
+
+=============================
+CATATAN:
+- Nomor soal diawali angka diikuti titik: "1." 
+- Pilihan diawali huruf + titik/kurung: "A." atau "A)"
+- Kunci jawaban: "Jawaban: X" atau "Kunci: X,Y" (untuk MCMA)
+`;
+                    const blob = new Blob([wordTemplate], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url; a.download = 'template-soal.txt'; a.click();
+                  }}
+                >
+                  📝 Download Template Word
+                </a>
               </div>
 
               {/* Drop zone */}
