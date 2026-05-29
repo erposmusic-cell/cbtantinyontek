@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* Allow text selection only in exam essay areas */
+  textarea, input { user-select: text; -webkit-user-select: text; }
+}
+
+@layer components {
+  /* Exam mode dark background */
+  .exam-mode { background: #0f172a !important; }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #f3f4f6; }
+  ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+  /* Watermark */
+  .watermark-text {
+    position: absolute;
+    opacity: 0.04;
+    font-size: 28px;
+    font-weight: 800;
+    color: white;
+    white-space: nowrap;
+    transform: rotate(-30deg);
+    user-select: none;
+    pointer-events: none;
+  }
+
+  /* Exam timer variants */
+  .timer-normal { @apply bg-blue-600; }
+  .timer-warning { @apply bg-amber-500; }
+  .timer-danger  { @apply bg-red-600 animate-pulse; }
+}
+
+@layer utilities {
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+}
