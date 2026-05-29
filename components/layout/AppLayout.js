@@ -5,24 +5,25 @@ import { useAuth } from '../../hooks/useAuth';
 
 const NAV_ITEMS = {
   admin: [
-    { href: '/dashboard',          icon: '📊', label: 'Dashboard' },
-    { href: '/admin/pengguna',     icon: '👥', label: 'Kelola Pengguna' },
-    { href: '/admin/ujian',        icon: '📋', label: 'Kelola Ujian' },
-    { href: '/admin/soal',         icon: '📝', label: 'Bank Soal' },
-    { href: '/admin/monitoring',   icon: '👁',  label: 'Monitoring' },
-    { href: '/admin/laporan',      icon: '📈', label: 'Laporan' },
+    { href: '/dashboard',              icon: '📊', label: 'Dashboard' },
+    { href: '/admin/pengguna',         icon: '👥', label: 'Kelola Pengguna' },
+    { href: '/admin/mata-pelajaran',   icon: '📖', label: 'Mata Pelajaran' },
+    { href: '/admin/ujian',            icon: '📋', label: 'Kelola Ujian' },
+    { href: '/admin/soal',             icon: '📝', label: 'Bank Soal' },
+    { href: '/admin/monitoring',       icon: '👁',  label: 'Monitoring' },
+    { href: '/admin/laporan',          icon: '📈', label: 'Laporan' },
   ],
   guru: [
-    { href: '/dashboard',          icon: '📊', label: 'Dashboard' },
-    { href: '/guru/ujian',         icon: '📋', label: 'Kelola Ujian' },
-    { href: '/guru/soal',          icon: '📝', label: 'Bank Soal' },
-    { href: '/guru/monitoring',    icon: '👁',  label: 'Monitoring' },
-    { href: '/guru/nilai',         icon: '✏️', label: 'Koreksi & Nilai' },
+    { href: '/dashboard',              icon: '📊', label: 'Dashboard' },
+    { href: '/guru/ujian',             icon: '📋', label: 'Kelola Ujian' },
+    { href: '/guru/soal',              icon: '📝', label: 'Bank Soal' },
+    { href: '/guru/monitoring',        icon: '👁',  label: 'Monitoring' },
+    { href: '/guru/nilai',             icon: '✏️', label: 'Koreksi & Nilai' },
   ],
   siswa: [
-    { href: '/dashboard',          icon: '🏠', label: 'Beranda' },
-    { href: '/siswa/ujian',        icon: '📝', label: 'Ujian Tersedia' },
-    { href: '/siswa/hasil',        icon: '📊', label: 'Hasil Ujian' },
+    { href: '/dashboard',              icon: '🏠', label: 'Beranda' },
+    { href: '/siswa/ujian',            icon: '📝', label: 'Ujian Tersedia' },
+    { href: '/siswa/hasil',            icon: '📊', label: 'Hasil Ujian' },
   ],
 };
 
