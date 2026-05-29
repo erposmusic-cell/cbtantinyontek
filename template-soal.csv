@@ -1,0 +1,8 @@
+tipe_soal,pertanyaan,pilihan_a,pilihan_b,pilihan_c,pilihan_d,kunci_jawaban,bobot,tingkat_kesulitan
+pilihan_ganda,Berapakah hasil dari 5 x 8?,35,40,45,50,B,1,mudah
+pilihan_ganda,Ibu kota Indonesia adalah...,Surabaya,Bandung,Jakarta,Medan,C,1,mudah
+mcma,"Manakah yang termasuk bilangan prima?",2,4,7,9,"A,C",2,sedang
+benar_salah,"Tentukan benar atau salah: (1) Matahari terbit dari timur (2) Bulan adalah bintang (3) Air mendidih pada 100 derajat Celsius (4) Bumi berbentuk datar (5) Oksigen dibutuhkan untuk bernapas",Pernyataan 1,Pernyataan 2,Pernyataan 3,Pernyataan 4,"BENAR,SALAH,BENAR,SALAH,BENAR",1,mudah
+essay,Jelaskan pengertian fotosintesis dan sebutkan faktor-faktor yang mempengaruhinya!,,,,,,3,sulit
+pilihan_ganda,Siapakah presiden pertama Indonesia?,Soeharto,Soekarno,Habibie,Megawati,B,1,mudah
+mcma,Manakah yang termasuk planet dalam tata surya?,Merkurius,Pluto,Venus,Sirius,"A,C",2,sedang

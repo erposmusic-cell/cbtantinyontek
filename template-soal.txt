@@ -1,0 +1,38 @@
+TEMPLATE SOAL - FORMAT WORD/TXT
+================================
+Petunjuk: Setiap soal diawali nomor (1., 2., dst.)
+Pilihan jawaban diawali A. B. C. D.
+Kunci jawaban ditulis: Jawaban: A
+
+================================
+
+1. Berapakah hasil dari 5 x 8?
+A. 35
+B. 40
+C. 45
+D. 50
+Jawaban: B
+
+2. Ibu kota Indonesia adalah...
+A. Surabaya
+B. Bandung
+C. Jakarta
+D. Medan
+Jawaban: C
+
+3. Siapakah penemu lampu pijar?
+A. Albert Einstein
+B. Thomas Edison
+C. Isaac Newton
+D. Alexander Bell
+Jawaban: B
+
+4. Planet yang paling dekat dengan matahari adalah...
+A. Venus
+B. Bumi
+C. Merkurius
+D. Mars
+Jawaban: C
+
+5. Jelaskan proses terjadinya hujan secara singkat!
+Jawaban: (Essay - tidak perlu pilihan jawaban)
