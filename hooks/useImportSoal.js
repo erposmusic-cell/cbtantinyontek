@@ -90,7 +90,6 @@ function parseWordText(text) {
 
     const pilihan = [];
     let kunci = '';
-    const labels = ['A', 'B', 'C', 'D', 'E'];
 
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i];
@@ -141,7 +140,9 @@ export function useImportSoal() {
       if (['xlsx', 'xls', 'csv'].includes(ext)) {
         const XLSX = await loadSheetJS();
         const ab   = await file.arrayBuffer();
-        const wb   = XLSX.read(ab, { type: 'array' });
+        // FIX: gunakan Uint8Array agar SheetJS bisa membaca ArrayBuffer dengan benar
+        const data  = new Uint8Array(ab);
+        const wb   = XLSX.read(data, { type: 'array' });
         const ws   = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
