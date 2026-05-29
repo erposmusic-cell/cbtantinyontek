@@ -246,6 +246,23 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
   const answered  = Object.keys(jawaban).length;
   const unanswered = totalSoal - answered;
 
+  // Guard: soalList kosong — tidak ada soal untuk ditampilkan
+  if (!soal) {
+    return (
+      <div className="fixed inset-0 bg-slate-900 z-[9999] flex flex-col items-center justify-center text-white text-center p-10">
+        <div className="text-7xl mb-5">📭</div>
+        <h1 className="text-2xl font-extrabold mb-3">Tidak Ada Soal</h1>
+        <p className="text-slate-400 text-sm max-w-sm">Ujian ini belum memiliki soal. Hubungi pengawas ujian.</p>
+        <button
+          onClick={() => onFinish({ jawaban: {}, violations, totalSoal: 0, answered: 0, unanswered: 0 })}
+          className="mt-8 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl transition-colors"
+        >
+          Kembali
+        </button>
+      </div>
+    );
+  }
+
   const setJawabanSoal = (val) => setJawaban(prev => ({ ...prev, [soal.id]: val }));
   const toggleFlag = () => {
     setFlagged(prev => {
