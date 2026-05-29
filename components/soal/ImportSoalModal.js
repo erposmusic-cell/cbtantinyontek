@@ -160,16 +160,25 @@ export default function ImportSoalModal({ open, onClose, onImport }) {
 
                     // Buat ZIP murni (tanpa library) — DOCX adalah file ZIP
                     const enc = new TextEncoder();
-                    const le2 = (n) => [n & 0xFF, (n >> 8) & 0xFF];
-                    const le4 = (n) => [n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >> 24) & 0xFF];
+                    // le2/le4 harus memakai unsigned right-shift (>>>) agar nilai
+                    // negatif (misalnya CRC32 > 0x7FFFFFFF) tidak menghasilkan byte
+                    // yang salah akibat sign-extension JavaScript.
+                    const le2 = (n) => {
+                      const u = n >>> 0;
+                      return [u & 0xFF, (u >>> 8) & 0xFF];
+                    };
+                    const le4 = (n) => {
+                      const u = n >>> 0;
+                      return [u & 0xFF, (u >>> 8) & 0xFF, (u >>> 16) & 0xFF, (u >>> 24) & 0xFF];
+                    };
                     const crc32 = (data) => {
                       const t = Array.from({ length: 256 }, (_, i) => {
-                        let c = i;
-                        for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
-                        return c;
+                        let c = i >>> 0;
+                        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+                        return c >>> 0;
                       });
                       let crc = 0xFFFFFFFF;
-                      for (const b of data) crc = t[(crc ^ b) & 0xFF] ^ (crc >>> 8);
+                      for (const b of data) crc = (t[(crc ^ b) & 0xFF] ^ (crc >>> 8)) >>> 0;
                       return (crc ^ 0xFFFFFFFF) >>> 0;
                     };
 
