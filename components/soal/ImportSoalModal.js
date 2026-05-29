@@ -96,48 +96,75 @@ export default function ImportSoalModal({ open, onClose, onImport }) {
                   href="/template-soal.docx"
                   download
                   className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.preventDefault();
-                    // Buat template Word dalam format teks plain
-                    const wordTemplate = `TEMPLATE SOAL - FORMAT WORD
-=============================
+                    // Load docx library dari CDN
+                    if (!window.docx) {
+                      await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js';
+                        script.onload = resolve;
+                        script.onerror = () => reject(new Error('Gagal memuat docx library'));
+                        document.head.appendChild(script);
+                      });
+                    }
+                    const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = window.docx;
 
-FORMAT PILIHAN GANDA:
-1. Contoh soal pilihan ganda di sini?
-A. Jawaban A
-B. Jawaban B
-C. Jawaban C
-D. Jawaban D
-Jawaban: A
+                    const bold = (text) => new TextRun({ text, bold: true });
+                    const normal = (text) => new TextRun({ text });
+                    const mono = (text) => new TextRun({ text, font: 'Courier New' });
 
-2. Contoh soal MCMA (pilih semua yang benar)?
-A. Opsi pertama
-B. Opsi kedua
-C. Opsi ketiga
-D. Opsi keempat
-Kunci: A,C
+                    const doc = new Document({
+                      sections: [{
+                        children: [
+                          new Paragraph({ heading: HeadingLevel.HEADING_1, children: [bold('Template Soal - Format Word')] }),
+                          new Paragraph({ children: [normal('Gunakan format di bawah ini untuk mengimpor soal. Setiap soal diawali dengan nomor urut.')] }),
+                          new Paragraph({}),
 
-FORMAT ESSAY:
-3. Jelaskan pengertian dari konsep berikut ini!
-Jawaban: (essay tidak perlu kunci)
+                          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [bold('Format Pilihan Ganda')] }),
+                          new Paragraph({ children: [mono('1. Contoh soal pilihan ganda di sini?')] }),
+                          new Paragraph({ children: [mono('A. Jawaban A')] }),
+                          new Paragraph({ children: [mono('B. Jawaban B')] }),
+                          new Paragraph({ children: [mono('C. Jawaban C')] }),
+                          new Paragraph({ children: [mono('D. Jawaban D')] }),
+                          new Paragraph({ children: [mono('Jawaban: A')] }),
+                          new Paragraph({}),
 
-FORMAT BENAR/SALAH:
-4. Pernyataan berikut, tentukan Benar atau Salah!
-A. Pernyataan pertama
-B. Pernyataan kedua
-C. Pernyataan ketiga
-D. Pernyataan keempat
-Jawaban: BENAR,SALAH,BENAR,SALAH
+                          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [bold('Format MCMA (Pilih Semua yang Benar)')] }),
+                          new Paragraph({ children: [mono('2. Contoh soal MCMA, pilih semua yang benar?')] }),
+                          new Paragraph({ children: [mono('A. Opsi pertama')] }),
+                          new Paragraph({ children: [mono('B. Opsi kedua')] }),
+                          new Paragraph({ children: [mono('C. Opsi ketiga')] }),
+                          new Paragraph({ children: [mono('D. Opsi keempat')] }),
+                          new Paragraph({ children: [mono('Kunci: A,C')] }),
+                          new Paragraph({}),
 
-=============================
-CATATAN:
-- Nomor soal diawali angka diikuti titik: "1." 
-- Pilihan diawali huruf + titik/kurung: "A." atau "A)"
-- Kunci jawaban: "Jawaban: X" atau "Kunci: X,Y" (untuk MCMA)
-`;
-                    const blob = new Blob([wordTemplate], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a'); a.href = url; a.download = 'template-soal.txt'; a.click();
+                          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [bold('Format Essay')] }),
+                          new Paragraph({ children: [mono('3. Jelaskan pengertian dari konsep berikut ini!')] }),
+                          new Paragraph({ children: [normal('(Essay tidak perlu kunci jawaban)')] }),
+                          new Paragraph({}),
+
+                          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [bold('Format Benar/Salah')] }),
+                          new Paragraph({ children: [mono('4. Tentukan Benar atau Salah pernyataan berikut!')] }),
+                          new Paragraph({ children: [mono('A. Pernyataan pertama')] }),
+                          new Paragraph({ children: [mono('B. Pernyataan kedua')] }),
+                          new Paragraph({ children: [mono('C. Pernyataan ketiga')] }),
+                          new Paragraph({ children: [mono('D. Pernyataan keempat')] }),
+                          new Paragraph({ children: [mono('Jawaban: BENAR,SALAH,BENAR,SALAH')] }),
+                          new Paragraph({}),
+
+                          new Paragraph({ heading: HeadingLevel.HEADING_2, children: [bold('Catatan Penting')] }),
+                          new Paragraph({ children: [normal('- Nomor soal diawali angka diikuti titik: "1."')] }),
+                          new Paragraph({ children: [normal('- Pilihan diawali huruf + titik atau kurung: "A." atau "A)"')] }),
+                          new Paragraph({ children: [normal('- Kunci jawaban: "Jawaban: A" atau "Kunci: A,C" (untuk MCMA)')] }),
+                        ],
+                      }],
+                    });
+
+                    const buffer = await Packer.toBlob(doc);
+                    const url = URL.createObjectURL(buffer);
+                    const a = document.createElement('a'); a.href = url; a.download = 'template-soal.docx'; a.click();
+                    URL.revokeObjectURL(url);
                   }}
                 >
                   📝 Download Template Word
