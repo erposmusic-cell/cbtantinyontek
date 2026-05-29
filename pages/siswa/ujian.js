@@ -1,177 +1,504 @@
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/router';
-import AppLayout from '../../components/layout/AppLayout';
-import ExamScreen from '../../components/exam/ExamScreen';
-import { useAuth } from '../../hooks/useAuth';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useAntiCheat } from '../../hooks/useAntiCheat';
+import { useFaceRecognition } from '../../hooks/useFaceRecognition';
+import { useScreenRecorder } from '../../hooks/useScreenRecorder';
 import { supabase } from '../../lib/supabase';
 
-function HasilUjian({ result, ujian, siswa, onClose }) {
-  const lulus = result.nilai >= ujian.passing_grade;
+// ── Timer ────────────────────────────────────────────────────
+function ExamTimer({ durasiMenit, onTimeout }) {
+  const [timeLeft, setTimeLeft] = useState(durasiMenit * 60);
+
+  // FIX BUG #2: Tambahkan onTimeout ke dependency array agar tidak stale closure.
+  // Gunakan useRef untuk onTimeout supaya tidak restart interval setiap render.
+  const onTimeoutRef = useRef(onTimeout);
+  useEffect(() => { onTimeoutRef.current = onTimeout; }, [onTimeout]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeLeft(t => {
+        if (t <= 1) { clearInterval(interval); onTimeoutRef.current(); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [durasiMenit]); // restart hanya jika durasi berubah
+
+  const mins = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+  const secs = (timeLeft % 60).toString().padStart(2, '0');
+  const isDanger  = timeLeft <= 60;
+  const isWarning = timeLeft <= 300 && !isDanger;
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-500 flex items-center justify-center p-6">
-      <div className="bg-white rounded-2xl p-10 max-w-md w-full text-center shadow-2xl animate-fade-in">
-        <h2 className="text-xl font-extrabold mb-1">{ujian.judul}</h2>
-        <p className="text-gray-500 text-sm mb-6">{siswa.nama_lengkap}</p>
-        <div className={`w-40 h-40 rounded-full mx-auto mb-6 flex flex-col items-center justify-center border-8
-          ${lulus ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}`}>
-          <span className={`text-5xl font-extrabold ${lulus ? 'text-green-600' : 'text-red-600'}`}>{result.nilai}</span>
-          <span className="text-xs text-gray-500">dari 100</span>
+    <div className={`flex items-center gap-2 px-4 py-2 rounded-full font-mono font-extrabold text-base text-white
+      ${isDanger ? 'bg-red-600 animate-pulse' : isWarning ? 'bg-amber-500' : 'bg-blue-600'}`}>
+      ⏱ {mins}:{secs}
+    </div>
+  );
+}
+
+// ── Watermark ────────────────────────────────────────────────
+function Watermark({ nama }) {
+  return (
+    <div className="fixed inset-0 pointer-events-none z-[9998] overflow-hidden">
+      {Array.from({ length: 15 }).map((_, i) => (
+        <div key={i} className="watermark-text" style={{
+          top:  `${(i * 13) % 100}%`,
+          left: `${(i * 17) % 80}%`,
+        }}>
+          {nama} • RAHASIA •
         </div>
-        <div className={`text-lg font-bold mb-5 ${lulus ? 'text-green-600' : 'text-red-600'}`}>
-          {lulus ? '🎉 LULUS' : '😔 TIDAK LULUS'}
-        </div>
-        <div className="bg-gray-50 rounded-xl p-4 mb-5 text-left space-y-2 text-sm">
-          {[
-            ['Soal Dijawab', `${result.answered} / ${result.totalSoal}`],
-            ['Nilai Minimum', `${ujian.passing_grade}`],
-            ['Pelanggaran', `${result.violations?.length || 0} kali`],
-          ].map(([k, v]) => (
-            <div key={k} className="flex justify-between py-1.5 border-b border-gray-200 last:border-0">
-              <span className="text-gray-500">{k}</span>
-              <span className="font-semibold">{v}</span>
-            </div>
-          ))}
-        </div>
-        <div className="bg-blue-50 border border-blue-200 text-blue-700 text-xs rounded-lg p-3 mb-4 text-left">
-          📝 Soal essay akan dikoreksi manual oleh guru dan nilai mungkin berubah.
-        </div>
-        <button
-          onClick={onClose}
-          className="w-full py-3.5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl transition-colors"
+      ))}
+    </div>
+  );
+}
+
+// ── Soal PG ──────────────────────────────────────────────────
+function SoalPG({ soal, jawaban, onJawab }) {
+  return (
+    <div className="space-y-2.5">
+      {soal.pilihan.map(p => (
+        <div
+          key={p.id}
+          onClick={() => onJawab(p.id)}
+          className={`flex items-start gap-3 p-3.5 rounded-lg border-2 cursor-pointer transition-all
+            ${jawaban === p.id
+              ? 'border-blue-500 bg-blue-900/30 text-blue-200'
+              : 'border-slate-600 bg-slate-900/60 text-slate-300 hover:border-slate-500 hover:bg-slate-800'
+            }`}
         >
-          Kembali ke Beranda
-        </button>
+          <span className={`min-w-[24px] h-6 rounded-md flex items-center justify-center text-xs font-bold shrink-0
+            ${jawaban === p.id ? 'bg-blue-600 text-white' : 'bg-slate-600 text-slate-300'}`}>
+            {p.label}
+          </span>
+          <span className="flex-1 text-sm leading-relaxed">{p.teks}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Soal MCMA ────────────────────────────────────────────────
+function SoalMCMA({ soal, jawaban = [], onJawab }) {
+  const toggle = (id) => {
+    const curr = jawaban || [];
+    const next = curr.includes(id) ? curr.filter(x => x !== id) : [...curr, id];
+    onJawab(next);
+  };
+  return (
+    <div>
+      <div className="text-xs text-blue-300 bg-blue-900/30 border border-blue-700 rounded-lg px-3 py-2 mb-3">
+        📌 Pilih SEMUA jawaban yang benar (bisa lebih dari satu)
+      </div>
+      <div className="space-y-2.5">
+        {soal.pilihan.map(p => {
+          const sel = (jawaban || []).includes(p.id);
+          return (
+            <div
+              key={p.id}
+              onClick={() => toggle(p.id)}
+              className={`flex items-start gap-3 p-3.5 rounded-lg border-2 cursor-pointer transition-all
+                ${sel
+                  ? 'border-blue-500 bg-blue-900/30 text-blue-200'
+                  : 'border-slate-600 bg-slate-900/60 text-slate-300 hover:border-slate-500 hover:bg-slate-800'
+                }`}
+            >
+              <span className={`min-w-[24px] h-6 rounded flex items-center justify-center text-xs font-bold shrink-0
+                ${sel ? 'bg-blue-600 text-white' : 'bg-slate-600 text-slate-300'}`}>
+                {p.label}
+              </span>
+              <span className="flex-1 text-sm">{p.teks}</span>
+              {sel && <span className="text-blue-400">☑</span>}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-export default function SiswaUjianPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-  const [ujianList, setUjianList] = useState([]);
-  const [examState, setExamState] = useState(null);
-  const [examResult, setExamResult] = useState(null);
-  const [loadingData, setLoadingData] = useState(true);
+// ── Soal Benar/Salah ─────────────────────────────────────────
+function SoalBS({ soal, jawaban = [], onJawab }) {
+  const set = (idx, val) => {
+    const curr = [...(jawaban || [null,null,null,null,null])];
+    curr[idx] = val;
+    onJawab(curr);
+  };
+  return (
+    <div>
+      <div className="text-xs text-blue-300 bg-blue-900/30 border border-blue-700 rounded-lg px-3 py-2 mb-3">
+        📋 Tentukan BENAR atau SALAH untuk setiap pernyataan
+      </div>
+      <div className="space-y-2">
+        {soal.pilihan.slice(0, 5).map((p, i) => {
+          const val = jawaban?.[i];
+          return (
+            <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg border border-slate-600 bg-slate-900/60 text-slate-300">
+              <span className="text-xs font-bold text-blue-400 w-7 shrink-0">{p.label}</span>
+              <span className="flex-1 text-sm">{p.teks}</span>
+              <div className="flex gap-1.5 shrink-0">
+                <button
+                  onClick={() => set(i, true)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors
+                    ${val === true ? 'bg-green-600 text-white' : 'border border-slate-500 text-slate-400 hover:border-green-500'}`}>
+                  BENAR
+                </button>
+                <button
+                  onClick={() => set(i, false)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors
+                    ${val === false ? 'bg-red-600 text-white' : 'border border-slate-500 text-slate-400 hover:border-red-500'}`}>
+                  SALAH
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
-  useEffect(() => {
-    if (!loading && !user) router.push('/');
-    if (user?.role !== 'siswa') router.push('/dashboard');
-  }, [user, loading]);
-
-  useEffect(() => {
-    if (user) loadUjian();
-  }, [user]);
-
-  async function loadUjian() {
-    setLoadingData(true);
-    const { data } = await supabase
-      .from('ujian')
-      .select('*, mata_pelajaran(nama)')
-      .eq('status', 'aktif')
-      .order('waktu_mulai', { ascending: true });
-    setUjianList(data || []);
-    setLoadingData(false);
-  }
-
-  async function startExam(ujian) {
-    // Ambil soal ujian
-    const { data: soalUjian } = await supabase
-      .from('soal_ujian')
-      .select('*, bank_soal(*, pilihan_jawaban(*))')
-      .eq('ujian_id', ujian.id)
-      .order('urutan');
-
-    const soal = soalUjian?.map(su => ({
-      ...su.bank_soal,
-      pilihan: su.bank_soal?.pilihan_jawaban || [],
-      bobot: su.bobot_override || su.bank_soal?.bobot || 1,
-    })) || [];
-
-    // Acak soal jika diaktifkan
-    const finalSoal = ujian.acak_soal
-      ? [...soal].sort(() => Math.random() - 0.5)
-      : soal;
-
-    // Buat sesi ujian
-    const { data: sesi } = await supabase
-      .from('sesi_ujian')
-      .insert({ ujian_id: ujian.id, siswa_id: user.id, status: 'berlangsung', waktu_mulai: new Date().toISOString() })
-      .select()
-      .single();
-
-    setExamState({ ujian, soal: finalSoal, sesiId: sesi?.id });
-    setExamResult(null);
-  }
-
-  function finishExam(result) {
-    // FIX: simpan ujian dari examState ke variabel lokal SEBELUM setExamState(null)
-    // agar tidak terjadi race condition saat React re-render
-    const ujianSnapshot = examState.ujian;
-    const totalBobot = examState.soal.reduce((s, q) => s + (q.bobot || 1), 0);
-    const nilai = Math.round((result.answered / result.totalSoal) * 100);
-    setExamResult({ ...result, nilai, ujian: ujianSnapshot });
-    setExamState(null);
-  }
-
-  if (loading || !user) return null;
-
-  if (examState) {
-    return (
-      <ExamScreen
-        ujian={examState.ujian}
-        soalList={examState.soal}
-        siswa={user}
-        sesiId={examState.sesiId}
-        onFinish={finishExam}
+// ── Soal Essay ───────────────────────────────────────────────
+function SoalEssay({ jawaban, onJawab }) {
+  return (
+    <div>
+      <div className="text-xs text-blue-300 bg-blue-900/30 border border-blue-700 rounded-lg px-3 py-2 mb-3">
+        ✍️ Tulis jawaban Anda dengan lengkap dan jelas
+      </div>
+      <textarea
+        className="w-full bg-slate-900/60 border-2 border-slate-600 focus:border-blue-500 rounded-lg
+                   text-slate-100 p-3.5 text-sm leading-relaxed resize-y min-h-[160px] outline-none transition-colors"
+        value={jawaban || ''}
+        onChange={e => onJawab(e.target.value)}
+        placeholder="Tulis jawaban Anda di sini..."
+        rows={8}
       />
+      <div className="text-right text-xs text-slate-500 mt-1">{(jawaban || '').length} karakter</div>
+    </div>
+  );
+}
+
+// ── Main ExamScreen ───────────────────────────────────────────
+export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish }) {
+  const [currentIdx, setCurrentIdx]         = useState(0);
+  const [jawaban, setJawaban]               = useState({});
+  const [flagged, setFlagged]               = useState(new Set());
+  const [violations, setViolations]         = useState([]);
+  const [violationAlert, setViolationAlert] = useState(null);
+  const [locked, setLocked]                 = useState(false);
+  const [lockReason, setLockReason]         = useState('');
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [submitting, setSubmitting]               = useState(false);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  const handleViolation = useCallback((v) => {
+    setViolations(prev => [...prev, v]);
+    setViolationAlert(v);
+    setTimeout(() => setViolationAlert(null), 4000);
+  }, []);
+
+  const handleLock = useCallback((reason) => {
+    setLocked(true);
+    setLockReason(reason);
+    streamRef.current?.getTracks().forEach(t => t.stop());
+  }, []);
+
+  useAntiCheat({
+    enabled: !locked,
+    config: ujian,
+    sesiId,
+    siswaId: siswa.id,
+    ujianId: ujian.id,
+    onViolation: handleViolation,
+    onLock: handleLock,
+  });
+
+  // ── Kamera + Face Recognition ──
+  useEffect(() => {
+    if (!ujian.deteksi_wajah) return;
+    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+      .then(stream => {
+        streamRef.current = stream;
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      }).catch(() => {});
+    return () => streamRef.current?.getTracks().forEach(t => t.stop());
+  }, [ujian.deteksi_wajah]);
+
+  useFaceRecognition({
+    videoRef,
+    enabled: !!ujian.deteksi_wajah && !locked,
+    intervalMs: 4000,
+    onViolation: (tipe, deskripsi, tingkat) => handleViolation({ tipe, deskripsi, tingkat }),
+  });
+
+  // ── Screen Recorder ──
+  const screenRecorder = useScreenRecorder({
+    sesiId,
+    siswaId: siswa.id,
+    ujianId: ujian.id,
+    enabled: !!ujian.rekam_layar,
+  });
+
+  // FIX BUG #3: getDisplayMedia() WAJIB dipanggil dari user gesture (klik tombol).
+  // Memanggil startRecording() via setTimeout tidak akan berhasil di browser modern
+  // karena dianggap bukan gesture langsung. Recorder hanya diaktifkan saat user klik
+  // tombol "Mulai Ujian" yang sudah terhubung ke startRecording di bawah.
+  // useEffect ini dihapus agar tidak otomatis jalan di background.
+  // (startRecording dipanggil manual dari tombol di halaman ujian siswa)
+
+  const soal = soalList[currentIdx];
+  const totalSoal = soalList.length;
+  const answered  = Object.keys(jawaban).length;
+  const unanswered = totalSoal - answered;
+
+  // Guard: soalList kosong — tidak ada soal untuk ditampilkan
+  if (!soal) {
+    return (
+      <div className="fixed inset-0 bg-slate-900 z-[9999] flex flex-col items-center justify-center text-white text-center p-10">
+        <div className="text-7xl mb-5">📭</div>
+        <h1 className="text-2xl font-extrabold mb-3">Tidak Ada Soal</h1>
+        <p className="text-slate-400 text-sm max-w-sm">Ujian ini belum memiliki soal. Hubungi pengawas ujian.</p>
+        <button
+          onClick={() => onFinish({ jawaban: {}, violations, totalSoal: 0, answered: 0, unanswered: 0 })}
+          className="mt-8 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl transition-colors"
+        >
+          Kembali
+        </button>
+      </div>
     );
   }
 
-  if (examResult) {
-    return <HasilUjian result={examResult} ujian={examResult.ujian} siswa={user} onClose={() => setExamResult(null)} />;
+  const setJawabanSoal = (val) => setJawaban(prev => ({ ...prev, [soal.id]: val }));
+  const toggleFlag = () => {
+    setFlagged(prev => {
+      const next = new Set(prev);
+      next.has(soal.id) ? next.delete(soal.id) : next.add(soal.id);
+      return next;
+    });
+  };
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    screenRecorder?.stopRecording?.();
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+    } catch {}
+    // onFinish sekarang async — tunggu sampai DB selesai sebelum pindah halaman
+    await onFinish({ jawaban, violations, totalSoal, answered, unanswered });
+  };
+
+  // ── Locked Screen ─────────────────────────────────────────
+  if (locked) {
+    return (
+      <div className="fixed inset-0 bg-red-600/95 z-[99999] flex flex-col items-center justify-center text-white text-center p-10">
+        <div className="text-7xl mb-5">🔒</div>
+        <h1 className="text-3xl font-extrabold mb-3">Ujian Dikunci</h1>
+        <p className="text-lg opacity-90 max-w-md leading-relaxed">{lockReason}</p>
+        <div className="mt-6 bg-white/20 rounded-xl px-8 py-4 text-5xl font-extrabold">{violations.length}</div>
+        <p className="mt-2 opacity-80 text-sm">Total Pelanggaran</p>
+        <p className="mt-6 text-sm opacity-70">Hubungi pengawas ujian untuk bantuan.</p>
+      </div>
+    );
   }
 
   return (
-    <AppLayout title="Ujian Tersedia">
-      <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-gray-900">📝 Ujian Tersedia</h1>
-        <p className="text-gray-500 text-sm mt-1">Daftar ujian yang dapat Anda ikuti</p>
-      </div>
+    <div className="fixed inset-0 bg-slate-900 z-[9999] flex flex-col overflow-hidden">
+      {ujian.watermark_nama && <Watermark nama={siswa.nama_lengkap} />}
 
-      {loadingData ? (
-        <div className="flex items-center justify-center h-48 text-gray-400">
-          <div className="w-8 h-8 border-4 border-gray-200 border-t-primary-600 rounded-full animate-spin mr-3" />
-          Memuat ujian...
-        </div>
-      ) : ujianList.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
-          <div className="text-5xl mb-3">📭</div>
-          <p className="font-semibold">Tidak ada ujian aktif saat ini</p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {ujianList.map(u => (
-            <div key={u.id} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="font-bold text-gray-900 text-sm leading-tight flex-1 pr-2">{u.judul}</h3>
-                <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full shrink-0">Aktif</span>
-              </div>
-              <div className="space-y-1.5 mb-4 text-xs text-gray-500">
-                <div>📚 {u.mata_pelajaran?.nama || '—'}</div>
-                <div>⏱ {u.durasi_menit} menit • {u.jumlah_soal} soal</div>
-                <div>🎯 Nilai minimum: {u.passing_grade}</div>
-              </div>
-              <button
-                onClick={() => startExam(u)}
-                className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-lg transition-colors"
-              >
-                Mulai Ujian →
-              </button>
-            </div>
-          ))}
+      {/* Violation Alert */}
+      {violationAlert && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[99999]
+                        bg-red-600 text-white px-5 py-3 rounded-xl shadow-xl text-sm font-semibold
+                        flex items-center gap-2 animate-fade-in">
+          ⚠️ {violationAlert.deskripsi}
+          <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-xs">
+            {violations.length}/{ujian.batas_pelanggaran}
+          </span>
         </div>
       )}
-    </AppLayout>
+
+      {/* Header */}
+      <div className="bg-slate-800 border-b border-slate-700 px-5 py-3 flex items-center justify-between shrink-0">
+        <div>
+          <div className="text-slate-100 font-bold text-sm">🎓 {ujian.judul}</div>
+          <div className="text-slate-400 text-xs mt-0.5">{siswa.nama_lengkap} • {siswa.kelas || ''}</div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-lg">
+            Dijawab: <strong className="text-green-400">{answered}</strong>/{totalSoal}
+          </div>
+          {violations.length > 0 && (
+            <div className="bg-red-900/60 border border-red-700 text-red-300 text-xs px-3 py-1.5 rounded-lg">
+              ⚠️ Pelanggaran: {violations.length}
+            </div>
+          )}
+          {ujian.rekam_layar && screenRecorder.status === 'recording' && (
+            <div className="flex items-center gap-1.5 bg-red-900/40 border border-red-700 text-red-300 text-xs px-3 py-1.5 rounded-lg">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              REC
+            </div>
+          )}
+          {/* FIX BUG #3: Tombol ini memberikan user gesture agar getDisplayMedia() diizinkan browser */}
+          {ujian.rekam_layar && screenRecorder.status === 'idle' && (
+            <button
+              onClick={screenRecorder.startRecording}
+              className="flex items-center gap-1.5 bg-slate-700 border border-slate-500 text-slate-300 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-600 transition-colors"
+            >
+              ⏺ Aktifkan Rekam
+            </button>
+          )}
+          <ExamTimer durasiMenit={ujian.durasi_menit} onTimeout={handleSubmit} />
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar navigasi soal */}
+        <div className="w-48 bg-slate-800 border-r border-slate-700 p-4 overflow-y-auto shrink-0">
+          <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3">Navigasi Soal</p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {soalList.map((s, i) => {
+              let cls = 'w-8 h-8 rounded-lg text-xs font-bold cursor-pointer transition-all border-2 flex items-center justify-center ';
+              if (i === currentIdx) cls += 'bg-blue-600 text-white border-blue-700';
+              else if (flagged.has(s.id)) cls += 'bg-amber-500 text-white border-amber-600';
+              else if (jawaban[s.id] !== undefined) cls += 'bg-green-600 text-white border-green-700';
+              else cls += 'bg-slate-600 text-slate-300 border-slate-500';
+              return (
+                <button key={s.id} className={cls} onClick={() => setCurrentIdx(i)}>
+                  {i + 1}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-5 space-y-1.5 text-xs text-slate-500">
+            {[['bg-green-600','Sudah dijawab'],['bg-amber-500','Ditandai'],['bg-slate-600','Belum']].map(([bg, label]) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-sm ${bg}`} />
+                {label}
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowSubmitConfirm(true)}
+            className="w-full mt-6 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors"
+          >
+            ✔ Submit Ujian
+          </button>
+        </div>
+
+        {/* Area soal */}
+        <div className="flex-1 p-6 overflow-y-auto">
+          <div className="max-w-3xl mx-auto bg-slate-800 rounded-2xl p-7 border border-slate-700 animate-fade-in" key={soal.id}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                Soal {currentIdx + 1} dari {totalSoal}
+              </span>
+              <span className={`text-xs px-2 py-0.5 rounded font-semibold
+                ${soal.tingkat_kesulitan === 'sulit'  ? 'bg-red-900/50 text-red-300'    :
+                  soal.tingkat_kesulitan === 'sedang' ? 'bg-amber-900/50 text-amber-300' :
+                                                        'bg-green-900/50 text-green-300'}`}>
+                {soal.tingkat_kesulitan || 'sedang'}
+              </span>
+              <span className="text-xs text-blue-400">Bobot: {soal.bobot}</span>
+            </div>
+            <p className="text-slate-100 text-base leading-relaxed mb-6">{soal.pertanyaan}</p>
+
+            {soal.tipe_soal === 'pilihan_ganda' && <SoalPG soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'mcma'          && <SoalMCMA soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'benar_salah'   && <SoalBS soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'essay'         && <SoalEssay jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+
+            {/* Navigasi */}
+            <div className="flex items-center justify-between mt-8 pt-5 border-t border-slate-700">
+              <button
+                onClick={() => currentIdx > 0 && setCurrentIdx(i => i - 1)}
+                disabled={currentIdx === 0}
+                className="px-4 py-2 bg-slate-700 text-slate-300 text-sm font-semibold rounded-lg
+                           hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                ← Sebelumnya
+              </button>
+              <button
+                onClick={toggleFlag}
+                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors
+                  ${flagged.has(soal.id) ? 'bg-amber-500 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+              >
+                {flagged.has(soal.id) ? '🚩 Ditandai' : '🏳 Tandai'}
+              </button>
+              {currentIdx < totalSoal - 1 ? (
+                <button
+                  onClick={() => setCurrentIdx(i => i + 1)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  Selanjutnya →
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowSubmitConfirm(true)}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  ✔ Selesai
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Kamera */}
+      {ujian.deteksi_wajah && (
+        <div className="fixed bottom-4 right-4 w-36 h-28 rounded-xl overflow-hidden border-2 border-slate-600 z-[9990] bg-black">
+          <video ref={videoRef} autoPlay muted className="w-full h-full object-cover scale-x-[-1]" />
+          <div className="absolute top-1.5 left-1.5 w-2 h-2 rounded-full bg-green-400" />
+        </div>
+      )}
+
+      {/* Modal Submit */}
+      {showSubmitConfirm && (
+        <div className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-5">
+          <div className="bg-slate-800 border border-slate-600 rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
+              <span className="text-slate-100 font-bold">Konfirmasi Submit</span>
+              <button onClick={() => setShowSubmitConfirm(false)} className="text-slate-400 hover:text-slate-200 text-xl">✕</button>
+            </div>
+            <div className="p-6 text-slate-300">
+              <div className="text-center mb-5">
+                <div className="text-5xl mb-3">📋</div>
+                <p className="text-sm">Yakin ingin mengumpulkan jawaban?</p>
+              </div>
+              <div className="bg-slate-900/60 rounded-xl p-4 space-y-2 mb-4 text-sm">
+                <div className="flex justify-between"><span className="text-slate-400">Sudah dijawab</span><span className="text-green-400 font-bold">{answered} soal</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Belum dijawab</span><span className={`font-bold ${unanswered > 0 ? 'text-red-400' : 'text-green-400'}`}>{unanswered} soal</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Ditandai</span><span className="text-amber-400 font-bold">{flagged.size} soal</span></div>
+              </div>
+              {unanswered > 0 && (
+                <div className="bg-red-900/40 border border-red-700 rounded-lg p-3 text-red-300 text-xs mb-3">
+                  ⚠️ Masih ada {unanswered} soal yang belum dijawab!
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-700">
+              <button
+                onClick={() => setShowSubmitConfirm(false)}
+                disabled={submitting}
+                className="px-4 py-2 bg-slate-700 text-slate-300 text-sm font-semibold rounded-lg hover:bg-slate-600 disabled:opacity-40 transition-colors"
+              >
+                Kembali
+              </button>
+              <button
+                onClick={() => { setShowSubmitConfirm(false); handleSubmit(); }}
+                disabled={submitting}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
+              >
+                {submitting ? (
+                  <><span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Menyimpan...</>
+                ) : '✔ Ya, Kumpulkan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
