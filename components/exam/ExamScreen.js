@@ -8,15 +8,21 @@ import { supabase } from '../../lib/supabase';
 function ExamTimer({ durasiMenit, onTimeout }) {
   const [timeLeft, setTimeLeft] = useState(durasiMenit * 60);
 
+  // FIX BUG #2: Tambahkan onTimeout ke dependency array agar tidak stale closure.
+  // Gunakan useRef untuk onTimeout supaya tidak restart interval setiap render.
+  const onTimeoutRef = useRef(onTimeout);
+  useEffect(() => { onTimeoutRef.current = onTimeout; }, [onTimeout]);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setTimeLeft(t => {
-        if (t <= 1) { clearInterval(interval); onTimeout(); return 0; }
+        if (t <= 1) { clearInterval(interval); onTimeoutRef.current(); return 0; }
         return t - 1;
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [durasiMenit]); // restart hanya jika durasi berubah
 
   const mins = Math.floor(timeLeft / 60).toString().padStart(2, '0');
   const secs = (timeLeft % 60).toString().padStart(2, '0');
@@ -182,6 +188,7 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
   const [locked, setLocked]                 = useState(false);
   const [lockReason, setLockReason]         = useState('');
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [submitting, setSubmitting]               = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
@@ -233,13 +240,12 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
     enabled: !!ujian.rekam_layar,
   });
 
-  useEffect(() => {
-    if (ujian.rekam_layar && screenRecorder.status === 'idle') {
-      const t = setTimeout(() => screenRecorder.startRecording(), 1500);
-      return () => clearTimeout(t);
-    }
-  // eslint-disable-next-line
-  }, [ujian.rekam_layar]);
+  // FIX BUG #3: getDisplayMedia() WAJIB dipanggil dari user gesture (klik tombol).
+  // Memanggil startRecording() via setTimeout tidak akan berhasil di browser modern
+  // karena dianggap bukan gesture langsung. Recorder hanya diaktifkan saat user klik
+  // tombol "Mulai Ujian" yang sudah terhubung ke startRecording di bawah.
+  // useEffect ini dihapus agar tidak otomatis jalan di background.
+  // (startRecording dipanggil manual dari tombol di halaman ujian siswa)
 
   const soal = soalList[currentIdx];
   const totalSoal = soalList.length;
@@ -273,12 +279,14 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
   };
 
   const handleSubmit = async () => {
+    setSubmitting(true);
     streamRef.current?.getTracks().forEach(t => t.stop());
     screenRecorder?.stopRecording?.();
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
     } catch {}
-    onFinish({ jawaban, violations, totalSoal, answered, unanswered });
+    // onFinish sekarang async — tunggu sampai DB selesai sebelum pindah halaman
+    await onFinish({ jawaban, violations, totalSoal, answered, unanswered });
   };
 
   // ── Locked Screen ─────────────────────────────────────────
@@ -331,6 +339,15 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
               REC
             </div>
+          )}
+          {/* FIX BUG #3: Tombol ini memberikan user gesture agar getDisplayMedia() diizinkan browser */}
+          {ujian.rekam_layar && screenRecorder.status === 'idle' && (
+            <button
+              onClick={screenRecorder.startRecording}
+              className="flex items-center gap-1.5 bg-slate-700 border border-slate-500 text-slate-300 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-600 transition-colors"
+            >
+              ⏺ Aktifkan Rekam
+            </button>
           )}
           <ExamTimer durasiMenit={ujian.durasi_menit} onTimeout={handleSubmit} />
         </div>
@@ -464,15 +481,19 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
             <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-700">
               <button
                 onClick={() => setShowSubmitConfirm(false)}
-                className="px-4 py-2 bg-slate-700 text-slate-300 text-sm font-semibold rounded-lg hover:bg-slate-600 transition-colors"
+                disabled={submitting}
+                className="px-4 py-2 bg-slate-700 text-slate-300 text-sm font-semibold rounded-lg hover:bg-slate-600 disabled:opacity-40 transition-colors"
               >
                 Kembali
               </button>
               <button
                 onClick={() => { setShowSubmitConfirm(false); handleSubmit(); }}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                disabled={submitting}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
               >
-                ✔ Ya, Kumpulkan
+                {submitting ? (
+                  <><span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Menyimpan...</>
+                ) : '✔ Ya, Kumpulkan'}
               </button>
             </div>
           </div>
