@@ -69,7 +69,7 @@ export default function SoalPage() {
 
   async function loadSoal() {
     setLoadingData(true);
-    let q = supabase.from('bank_soal').select('*, mata_pelajaran(nama), pilihan_jawaban(*)').order('created_at', { ascending: false });
+    let q = supabase.from('bank_soal').select('*, mata_pelajaran(nama), pilihan_jawaban(*)').eq('guru_id', user.id).order('created_at', { ascending: false });
     if (selectedMapel) q = q.eq('mata_pelajaran_id', selectedMapel);
     const { data } = await q;
     setSoalList(data || []);
