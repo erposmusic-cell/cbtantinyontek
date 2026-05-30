@@ -54,6 +54,7 @@ export default function SiswaUjianPage() {
   const [filterMapel, setFilterMapel] = useState('');
   const [tokenInput, setTokenInput]   = useState({});
   const [tokenError, setTokenError]   = useState({});
+  const [diskualifikasiIds, setDiskualifikasiIds] = useState(new Set());
   const [examState, setExamState]     = useState(null);
   const [examResult, setExamResult]   = useState(null);
   const [loadingData, setLoadingData] = useState(true);
@@ -106,6 +107,21 @@ export default function SiswaUjianPage() {
       return peserta.some(p => p.siswa_id === user.id && p.diizinkan);
     });
 
+    // Cek sesi yang sudah diskualifikasi untuk ujian-ujian ini
+    const ujianTersediaIds = ujianTersedia.map(u => u.id);
+    const { data: sesiData } = await supabase
+      .from('sesi_ujian')
+      .select('ujian_id, status')
+      .eq('siswa_id', user.id)
+      .in('ujian_id', ujianTersediaIds);
+
+    const diskualifikasiSet = new Set(
+      (sesiData || [])
+        .filter(s => s.status === 'diskualifikasi')
+        .map(s => s.ujian_id)
+    );
+
+    setDiskualifikasiIds(diskualifikasiSet);
     setUjianList(ujianTersedia);
     setLoadingData(false);
   }
@@ -128,6 +144,10 @@ export default function SiswaUjianPage() {
       .eq('siswa_id', user.id)
       .maybeSingle();
 
+    if (sesiExisting?.status === 'diskualifikasi') {
+      alert('Kamu telah didiskualifikasi dari ujian ini dan tidak dapat masuk kembali.');
+      return;
+    }
     if (sesiExisting?.status === 'selesai') {
       alert('Kamu sudah mengerjakan ujian ini. Tidak bisa mengulang.');
       return;
@@ -215,11 +235,16 @@ export default function SiswaUjianPage() {
         .rpc('hitung_nilai_sesi', { p_sesi_id: sesiId });
       nilaiAkhir = nilaiData ?? 0;
 
-      // 3. Update sesi_ujian: status selesai + waktu_selesai + jumlah_pelanggaran
+      // 3. Update sesi_ujian: status selesai/diskualifikasi + waktu_selesai + jumlah_pelanggaran
+      const jumlahPelanggaran = result.violations?.length ?? 0;
+      const batasPelanggaran  = ujianSnapshot.batas_pelanggaran ?? 3;
+      const statusAkhir = (result.locked || jumlahPelanggaran >= batasPelanggaran)
+        ? 'diskualifikasi'
+        : 'selesai';
       await supabase.from('sesi_ujian').update({
-        status:               'selesai',
+        status:               statusAkhir,
         waktu_selesai:        new Date().toISOString(),
-        jumlah_pelanggaran:   result.violations?.length ?? 0,
+        jumlah_pelanggaran:   jumlahPelanggaran,
         nilai_akhir:          nilaiAkhir,
       }).eq('id', sesiId);
     } else {
@@ -310,34 +335,41 @@ export default function SiswaUjianPage() {
                 <div>🎯 Nilai minimum: {u.passing_grade}</div>
               </div>
 
-              {/* Input Token jika ujian memakai token */}
-              {u.token_ujian && (
-                <div className="mb-3">
-                  <input
-                    type="text"
-                    value={tokenInput[u.id] || ''}
-                    onChange={e => {
-                      setTokenInput(prev => ({ ...prev, [u.id]: e.target.value.toUpperCase() }));
-                      setTokenError(prev => ({ ...prev, [u.id]: '' }));
-                    }}
-                    placeholder="Masukkan token ujian"
-                    maxLength={10}
-                    className={`w-full px-3 py-2 border rounded-lg text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      tokenError[u.id] ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                    }`}
-                  />
-                  {tokenError[u.id] && (
-                    <p className="text-red-500 text-xs mt-1">{tokenError[u.id]}</p>
-                  )}
+              {diskualifikasiIds.has(u.id) ? (
+                <div className="w-full py-2.5 bg-red-100 text-red-700 text-sm font-bold rounded-lg text-center">
+                  🚫 Kamu telah didiskualifikasi
                 </div>
+              ) : (
+                <>
+                  {/* Input Token jika ujian memakai token */}
+                  {u.token_ujian && (
+                    <div className="mb-3">
+                      <input
+                        type="text"
+                        value={tokenInput[u.id] || ''}
+                        onChange={e => {
+                          setTokenInput(prev => ({ ...prev, [u.id]: e.target.value.toUpperCase() }));
+                          setTokenError(prev => ({ ...prev, [u.id]: '' }));
+                        }}
+                        placeholder="Masukkan token ujian"
+                        maxLength={10}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          tokenError[u.id] ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                        }`}
+                      />
+                      {tokenError[u.id] && (
+                        <p className="text-red-500 text-xs mt-1">{tokenError[u.id]}</p>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => startExam(u)}
+                    className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-lg transition-colors"
+                  >
+                    {u.token_ujian ? '🔑 Masuk dengan Token →' : 'Mulai Ujian →'}
+                  </button>
+                </>
               )}
-
-              <button
-                onClick={() => startExam(u)}
-                className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-lg transition-colors"
-              >
-                {u.token_ujian ? '🔑 Masuk dengan Token →' : 'Mulai Ujian →'}
-              </button>
             </div>
           ))}
         </div>
