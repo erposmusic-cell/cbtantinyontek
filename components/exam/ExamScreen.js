@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAntiCheat } from '../../hooks/useAntiCheat';
 import { useFaceRecognition } from '../../hooks/useFaceRecognition';
 import { useScreenRecorder } from '../../hooks/useScreenRecorder';
-import { useScreenshot } from '../../hooks/useScreenshot';
 import { supabase } from '../../lib/supabase';
 
 // ── Timer ────────────────────────────────────────────────────
@@ -193,50 +192,11 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
-  // Capture frame dari kamera saat wajah tidak terdeteksi — ringan, tidak butuh izin extra
-  const captureWajah = useCallback(async (tipe) => {
-    const video = videoRef.current;
-    if (!video || video.readyState < 2) return;
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width  = video.videoWidth  || 320;
-      canvas.height = video.videoHeight || 240;
-      canvas.getContext('2d').drawImage(video, 0, 0);
-      canvas.toBlob(async (blob) => {
-        if (!blob) return;
-        const fname = `wajah_${tipe}_${sesiId || 'unknown'}_${Date.now()}.jpg`;
-        const path  = `${ujian.id}/${siswa.id}/${fname}`;
-        const { error } = await supabase.storage
-          .from('screenshot-ujian')
-          .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
-        if (!error) {
-          await supabase.from('rekaman_ujian').insert({
-            sesi_id:      sesiId,
-            siswa_id:     siswa.id,
-            ujian_id:     ujian.id,
-            file_path:    path,
-            durasi_detik: 0,
-            ukuran_byte:  blob.size,
-            dibuat_pada:  new Date().toISOString(),
-          });
-        }
-      }, 'image/jpeg', 0.7);
-    } catch (err) {
-      console.warn('[captureWajah] Gagal capture:', err);
-    }
-  }, [sesiId, siswa.id, ujian.id]);
-
   const handleViolation = useCallback((v) => {
     setViolations(prev => [...prev, v]);
     setViolationAlert(v);
     setTimeout(() => setViolationAlert(null), 4000);
-    // Capture kamera jika pelanggaran terkait wajah
-    if (ujian.deteksi_wajah && v.tipe && v.tipe.toLowerCase().includes('wajah')) {
-      captureWajah(v.tipe);
-    }
-    // Screenshot layar untuk pelanggaran lain (jika screen share aktif)
-    screenshot.takeScreenshotViolation?.(v.tipe || 'pelanggaran');
-  }, [screenshot, captureWajah, ujian.deteksi_wajah]);
+  }, []);
 
   const handleLock = useCallback((reason) => {
     setLocked(true);
@@ -280,22 +240,6 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
     enabled: !!ujian.rekam_aktivitas,
   });
 
-  // Screenshot awal & akhir — ringan, hanya 2 gambar per sesi
-  const screenshot = useScreenshot({
-    sesiId,
-    siswaId: siswa.id,
-    ujianId: ujian.id,
-    enabled: !!ujian.rekam_aktivitas,
-  });
-
-  // Otomatis minta izin screenshot saat mount (masih dalam user gesture klik "Mulai Ujian")
-  useEffect(() => {
-    if (ujian.rekam_aktivitas && screenshot.status === 'idle') {
-      screenshot.requestPermission();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // FIX BUG #3: getDisplayMedia() WAJIB dipanggil dari user gesture (klik tombol).
   // Memanggil startRecording() via setTimeout tidak akan berhasil di browser modern
   // karena dianggap bukan gesture langsung. Recorder hanya diaktifkan saat user klik
@@ -337,7 +281,6 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
   const handleSubmit = async () => {
     setSubmitting(true);
     streamRef.current?.getTracks().forEach(t => t.stop());
-    await screenshot.takeScreenshotAkhir?.();
     screenRecorder?.stopRecording?.();
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -355,7 +298,13 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
         <p className="text-lg opacity-90 max-w-md leading-relaxed">{lockReason}</p>
         <div className="mt-6 bg-white/20 rounded-xl px-8 py-4 text-5xl font-extrabold">{violations.length}</div>
         <p className="mt-2 opacity-80 text-sm">Total Pelanggaran</p>
-        <p className="mt-6 text-sm opacity-70">Hubungi pengawas ujian untuk bantuan.</p>
+        <p className="mt-6 text-sm opacity-70">Kamu telah didiskualifikasi. Hubungi pengawas ujian.</p>
+        <button
+          onClick={() => onFinish({ jawaban, violations, totalSoal, answered, unanswered, locked: true })}
+          className="mt-8 px-8 py-3 bg-white/20 hover:bg-white/30 text-white font-bold rounded-xl transition-colors text-sm"
+        >
+          Selesai & Keluar
+        </button>
       </div>
     );
   }
@@ -397,17 +346,14 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
               REC
             </div>
           )}
-          {ujian.rekam_aktivitas && screenshot.status === 'requesting' && (
-            <div className="flex items-center gap-1.5 bg-yellow-900/40 border border-yellow-700 text-yellow-300 text-xs px-3 py-1.5 rounded-lg">
-              <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-              Meminta izin...
-            </div>
-          )}
-          {ujian.rekam_aktivitas && screenshot.status === 'ready' && (
-            <div className="flex items-center gap-1.5 bg-green-900/40 border border-green-700 text-green-300 text-xs px-3 py-1.5 rounded-lg">
-              <span className="w-2 h-2 rounded-full bg-green-400" />
-              📸 SS Aktif
-            </div>
+          {/* FIX BUG #3: Tombol ini memberikan user gesture agar getDisplayMedia() diizinkan browser */}
+          {ujian.rekam_aktivitas && screenRecorder.status === 'idle' && (
+            <button
+              onClick={screenRecorder.startRecording}
+              className="flex items-center gap-1.5 bg-slate-700 border border-slate-500 text-slate-300 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-600 transition-colors"
+            >
+              ⏺ Aktifkan Rekam
+            </button>
           )}
           <ExamTimer durasiMenit={ujian.durasi_menit} onTimeout={handleSubmit} />
         </div>
