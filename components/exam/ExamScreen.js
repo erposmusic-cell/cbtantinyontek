@@ -192,11 +192,85 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
+  // ── Screenshot inline — capture layar saat pelanggaran ──
+  const ssStreamRef = useRef(null);
+
+  // Minta izin screen share saat mount (masih dalam user gesture klik "Mulai Ujian")
+  useEffect(() => {
+    if (!ujian.rekam_aktivitas) return;
+    navigator.mediaDevices?.getDisplayMedia?.({ video: true, audio: false })
+      .then(stream => { ssStreamRef.current = stream; })
+      .catch(() => {}); // user tolak = tidak apa-apa
+    return () => ssStreamRef.current?.getTracks().forEach(t => t.stop());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const captureScreenshot = useCallback(async (label = 'pelanggaran') => {
+    const stream = ssStreamRef.current;
+    if (!stream || !stream.active) return;
+    try {
+      const track = stream.getVideoTracks()[0];
+      if (!track) return;
+      let blob;
+      if (typeof ImageCapture !== 'undefined') {
+        blob = await new ImageCapture(track).takePhoto();
+      } else {
+        await new Promise(resolve => {
+          const video = document.createElement('video');
+          video.srcObject = stream;
+          video.onloadedmetadata = () => {
+            video.play();
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth || 1280;
+            canvas.height = video.videoHeight || 720;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            canvas.toBlob(b => { blob = b; resolve(); }, 'image/jpeg', 0.7);
+            video.pause();
+          };
+        });
+      }
+      if (!blob) return;
+      const path = `${ujian.id}/${siswa.id}/ss_${label}_${Date.now()}.jpg`;
+      await supabase.storage.from('screenshot-ujian').upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+      await supabase.from('rekaman_ujian').insert({
+        sesi_id: sesiId, siswa_id: siswa.id, ujian_id: ujian.id,
+        file_path: path, durasi_detik: 0, ukuran_byte: blob.size,
+        dibuat_pada: new Date().toISOString(),
+      });
+    } catch (e) { console.warn('[SS]', e); }
+  }, [ujian.id, siswa.id, sesiId]);
+
+  // Capture kamera saat wajah tidak terdeteksi
+  const captureWajah = useCallback(async (label = 'wajah') => {
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) return;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 240;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        const path = `${ujian.id}/${siswa.id}/wajah_${label}_${Date.now()}.jpg`;
+        await supabase.storage.from('screenshot-ujian').upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+        await supabase.from('rekaman_ujian').insert({
+          sesi_id: sesiId, siswa_id: siswa.id, ujian_id: ujian.id,
+          file_path: path, durasi_detik: 0, ukuran_byte: blob.size,
+          dibuat_pada: new Date().toISOString(),
+        });
+      }, 'image/jpeg', 0.7);
+    } catch (e) { console.warn('[SS Wajah]', e); }
+  }, [ujian.id, siswa.id, sesiId]);
+
   const handleViolation = useCallback((v) => {
     setViolations(prev => [...prev, v]);
     setViolationAlert(v);
     setTimeout(() => setViolationAlert(null), 4000);
-  }, []);
+    // Screenshot layar saat pelanggaran (jika screen share aktif)
+    if (ujian.rekam_aktivitas) captureScreenshot(v.tipe || 'pelanggaran');
+    // Capture kamera jika pelanggaran wajah
+    if (ujian.deteksi_wajah && v.tipe?.toLowerCase().includes('wajah')) captureWajah(v.tipe);
+  }, [captureScreenshot, captureWajah, ujian.rekam_aktivitas, ujian.deteksi_wajah]);
 
   const handleLock = useCallback((reason) => {
     setLocked(true);
@@ -281,6 +355,8 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
   const handleSubmit = async () => {
     setSubmitting(true);
     streamRef.current?.getTracks().forEach(t => t.stop());
+    await captureScreenshot('akhir');
+    ssStreamRef.current?.getTracks().forEach(t => t.stop());
     screenRecorder?.stopRecording?.();
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -346,15 +422,7 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
               REC
             </div>
           )}
-          {/* FIX BUG #3: Tombol ini memberikan user gesture agar getDisplayMedia() diizinkan browser */}
-          {ujian.rekam_aktivitas && screenRecorder.status === 'idle' && (
-            <button
-              onClick={screenRecorder.startRecording}
-              className="flex items-center gap-1.5 bg-slate-700 border border-slate-500 text-slate-300 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-600 transition-colors"
-            >
-              ⏺ Aktifkan Rekam
-            </button>
-          )}
+
           <ExamTimer durasiMenit={ujian.durasi_menit} onTimeout={handleSubmit} />
         </div>
       </div>
