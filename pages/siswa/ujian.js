@@ -75,6 +75,19 @@ export default function SiswaUjianPage() {
   }
 
   async function startExam(ujian) {
+    // Cek apakah siswa sudah punya sesi untuk ujian ini
+    const { data: sesiExisting } = await supabase
+      .from('sesi_ujian')
+      .select('id, status')
+      .eq('ujian_id', ujian.id)
+      .eq('siswa_id', user.id)
+      .maybeSingle();
+
+    if (sesiExisting?.status === 'selesai') {
+      alert('Kamu sudah mengerjakan ujian ini. Tidak bisa mengulang.');
+      return;
+    }
+
     // Ambil soal ujian
     const { data: soalUjian } = await supabase
       .from('soal_ujian')
@@ -88,19 +101,26 @@ export default function SiswaUjianPage() {
       bobot: su.bobot_override || su.bank_soal?.bobot || 1,
     })) || [];
 
-    // Acak soal jika diaktifkan
     const finalSoal = ujian.acak_soal
       ? [...soal].sort(() => Math.random() - 0.5)
       : soal;
 
-    // Buat sesi ujian
-    const { data: sesi } = await supabase
-      .from('sesi_ujian')
-      .insert({ ujian_id: ujian.id, siswa_id: user.id, status: 'berlangsung', waktu_mulai: new Date().toISOString() })
-      .select()
-      .single();
+    // Jika sesi berlangsung sudah ada (misal browser crash), lanjutkan sesi itu
+    let sesiId = sesiExisting?.id;
+    if (!sesiId) {
+      const { data: sesi, error: sesiErr } = await supabase
+        .from('sesi_ujian')
+        .insert({ ujian_id: ujian.id, siswa_id: user.id, status: 'berlangsung', waktu_mulai: new Date().toISOString() })
+        .select('id')
+        .single();
+      if (sesiErr) {
+        alert('Gagal memulai ujian. Silakan coba lagi.');
+        return;
+      }
+      sesiId = sesi.id;
+    }
 
-    setExamState({ ujian, soal: finalSoal, sesiId: sesi?.id });
+    setExamState({ ujian, soal: finalSoal, sesiId });
     setExamResult(null);
   }
 
