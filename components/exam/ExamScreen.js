@@ -298,7 +298,13 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
         <p className="text-lg opacity-90 max-w-md leading-relaxed">{lockReason}</p>
         <div className="mt-6 bg-white/20 rounded-xl px-8 py-4 text-5xl font-extrabold">{violations.length}</div>
         <p className="mt-2 opacity-80 text-sm">Total Pelanggaran</p>
-        <p className="mt-6 text-sm opacity-70">Hubungi pengawas ujian untuk bantuan.</p>
+        <p className="mt-6 text-sm opacity-70">Kamu telah didiskualifikasi. Hubungi pengawas ujian.</p>
+        <button
+          onClick={() => onFinish({ jawaban, violations, totalSoal, answered, unanswered, locked: true })}
+          className="mt-8 px-8 py-3 bg-white/20 hover:bg-white/30 text-white font-bold rounded-xl transition-colors text-sm"
+        >
+          Selesai & Keluar
+        </button>
       </div>
     );
   }
