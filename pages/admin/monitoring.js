@@ -203,6 +203,25 @@ export default function MonitoringPage() {
     loadData(selectedUjian.id);
   }
 
+  // ── Reset sesi siswa agar bisa ujian ulang ──
+  async function resetSesi(sesi) {
+    setLocking(sesi.id);
+    // Hapus jawaban lama
+    await supabase.from('jawaban_siswa').delete().eq('sesi_id', sesi.id);
+    // Reset sesi ke belum_mulai
+    await supabase.from('sesi_ujian').update({
+      status:             'belum_mulai',
+      waktu_mulai:        null,
+      waktu_selesai:      null,
+      nilai_akhir:        null,
+      jumlah_pelanggaran: 0,
+      alasan_kunci:       null,
+      dikunci_pada:       null,
+    }).eq('id', sesi.id);
+    setLocking(null);
+    loadData(selectedUjian.id);
+  }
+
   // ── Statistik ──
   const stats = {
     total:       sesiList.length,
@@ -471,6 +490,19 @@ export default function MonitoringPage() {
                                     className="px-3 py-1.5 rounded-lg text-xs font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50 transition-all"
                                   >
                                     {locking === sesi.id ? '...' : '♻️ Pulihkan'}
+                                  </button>
+                                )}
+                                {sesi.status === 'selesai' && (
+                                  <button
+                                    onClick={() => {
+                                      if (confirm(`Reset ujian ${sesi.profiles?.nama_lengkap || 'siswa ini'}? Jawaban lama akan dihapus.`)) {
+                                        resetSesi(sesi);
+                                      }
+                                    }}
+                                    disabled={locking === sesi.id}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-50 transition-all"
+                                  >
+                                    {locking === sesi.id ? '...' : '🔄 Reset'}
                                   </button>
                                 )}
                               </div>
