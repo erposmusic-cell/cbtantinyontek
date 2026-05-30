@@ -30,12 +30,13 @@ export default function DashboardPage() {
 
   async function loadStats() {
     if (user.role === 'admin' || user.role === 'guru') {
-      const [{ count: totalSiswa }, { count: totalUjian }, { count: totalSoal }] = await Promise.all([
+      const [{ count: totalSiswa }, { count: totalUjian }, { count: totalSoal }, { count: ujianAktif }] = await Promise.all([
         supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'siswa'),
         supabase.from('ujian').select('*', { count: 'exact', head: true }),
         supabase.from('bank_soal').select('*', { count: 'exact', head: true }),
+        supabase.from('ujian').select('*', { count: 'exact', head: true }).eq('status', 'aktif'),
       ]);
-      setStats({ totalSiswa, totalUjian, totalSoal });
+      setStats({ totalSiswa, totalUjian, totalSoal, ujianAktif });
     } else {
       const [{ count: ujianTersedia }, { count: hasilUjian }] = await Promise.all([
         supabase.from('ujian').select('*', { count: 'exact', head: true }).eq('status', 'aktif'),
@@ -66,7 +67,7 @@ export default function DashboardPage() {
             <StatCard icon="👥" label="Total Siswa"  value={stats?.totalSiswa  ?? '—'} color="text-blue-600" />
             <StatCard icon="📋" label="Total Ujian"  value={stats?.totalUjian  ?? '—'} color="text-purple-600" />
             <StatCard icon="📝" label="Bank Soal"    value={stats?.totalSoal   ?? '—'} color="text-green-600" />
-            <StatCard icon="🟢" label="Ujian Aktif"  value="—" color="text-amber-600" />
+            <StatCard icon="🟢" label="Ujian Aktif"  value={stats?.ujianAktif ?? '—'} color="text-amber-600" />
           </>
         ) : (
           <>
