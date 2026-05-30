@@ -69,7 +69,7 @@ export function useFaceRecognition({ videoRef, enabled, intervalMs = 3000, onVio
         noFaceCount.current += 1;
         // Laporan hanya setelah 2x berturut-turut (6 detik) untuk menghindari false positive
         if (noFaceCount.current >= 2) {
-          onViolation?.('tidak_ada_wajah', 'Wajah siswa tidak terdeteksi di kamera', 'tinggi');
+          onViolation?.('wajah_tidak_terdeteksi', 'Wajah siswa tidak terdeteksi di kamera', 'tinggi');
           noFaceCount.current = 0;
         }
         return;
@@ -79,7 +79,7 @@ export function useFaceRecognition({ videoRef, enabled, intervalMs = 3000, onVio
 
       // ── Lebih dari 1 wajah ──
       if (count > 1) {
-        onViolation?.('wajah_ganda', `Terdeteksi ${count} wajah dalam kamera`, 'kritis');
+        onViolation?.('wajah_berganda', `Terdeteksi ${count} wajah dalam kamera`, 'kritis');
         return;
       }
 
@@ -103,7 +103,7 @@ export function useFaceRecognition({ videoRef, enabled, intervalMs = 3000, onVio
         // Jika hidung menyimpang > 15% dari lebar video → menoleh
         if (deviation > 0.15) {
           const arah = noseTip.x < faceCenter ? 'kiri' : 'kanan';
-          onViolation?.('menoleh', `Siswa terdeteksi menoleh ke ${arah}`, 'sedang');
+          onViolation?.('lainnya', `Siswa terdeteksi menoleh ke ${arah}`, 'sedang');
         }
       }
     } catch {
