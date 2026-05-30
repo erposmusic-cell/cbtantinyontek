@@ -46,9 +46,11 @@ export default function KelolaUjianPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [soalList, setSoalList]           = useState([]);
+  const [selectedSoal, setSelectedSoal]   = useState([]);
 
   useEffect(() => { if (!loading && !user) router.push('/'); }, [user, loading]);
-  useEffect(() => { if (user) { loadUjian(); loadMapel(); } }, [user]);
+  useEffect(() => { if (user) { loadUjian(); loadMapel(); loadSoal(); } }, [user]);
 
   async function loadUjian() {
     const { data } = await supabase
@@ -63,6 +65,15 @@ export default function KelolaUjianPage() {
     setMapel(data || []);
   }
 
+  async function loadSoal() {
+    const { data } = await supabase
+      .from('bank_soal')
+      .select('id, pertanyaan, tipe_soal, bobot, mata_pelajaran_id, mata_pelajaran(nama)')
+      .eq('aktif', true)
+      .order('created_at', { ascending: false });
+    setSoalList(data || []);
+  }
+
   async function updateStatus(id, status) {
     await supabase.from('ujian').update({ status }).eq('id', id);
     setUjianList(prev => prev.map(u => u.id === id ? { ...u, status } : u));
@@ -71,11 +82,12 @@ export default function KelolaUjianPage() {
   function openAdd() {
     setEditTarget(null);
     setForm(FORM_DEFAULT);
+    setSelectedSoal([]);
     setError('');
     setShowModal(true);
   }
 
-  function openEdit(u) {
+  async function openEdit(u) {
     setEditTarget(u);
     setForm({
       judul: u.judul, deskripsi: u.deskripsi || '', mata_pelajaran_id: u.mata_pelajaran_id || '',
@@ -91,6 +103,10 @@ export default function KelolaUjianPage() {
       kunci_browser: u.kunci_browser, watermark_nama: u.watermark_nama,
       rekam_aktivitas: u.rekam_aktivitas,
     });
+    // Load soal yang sudah dipilih untuk ujian ini
+    const { data: existing } = await supabase
+      .from('soal_ujian').select('soal_id').eq('ujian_id', u.id).order('urutan');
+    setSelectedSoal((existing || []).map(r => r.soal_id));
     setError('');
     setShowModal(true);
   }
@@ -98,24 +114,42 @@ export default function KelolaUjianPage() {
   const setF = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
   async function handleSave() {
-    if (!form.judul.trim()) { setError('Judul ujian wajib diisi'); return; }
-    if (!form.waktu_mulai)  { setError('Waktu mulai wajib diisi'); return; }
-    if (!form.waktu_selesai){ setError('Waktu selesai wajib diisi'); return; }
+    if (!form.judul.trim())      { setError('Judul ujian wajib diisi'); return; }
+    if (!form.waktu_mulai)       { setError('Waktu mulai wajib diisi'); return; }
+    if (!form.waktu_selesai)     { setError('Waktu selesai wajib diisi'); return; }
+    if (selectedSoal.length === 0) { setError('Pilih minimal 1 soal untuk ujian ini'); return; }
     setSaving(true); setError('');
     try {
       const payload = {
         ...form,
+        jumlah_soal: selectedSoal.length,
         kelas_target: form.kelas_target ? form.kelas_target.split(',').map(s => s.trim()).filter(Boolean) : [],
         mata_pelajaran_id: form.mata_pelajaran_id || null,
         guru_id: user.id,
       };
+
+      let ujianId;
       if (editTarget) {
         const { error: err } = await supabase.from('ujian').update(payload).eq('id', editTarget.id);
         if (err) throw err;
+        ujianId = editTarget.id;
+        // Hapus soal lama, ganti dengan pilihan baru
+        await supabase.from('soal_ujian').delete().eq('ujian_id', ujianId);
       } else {
-        const { error: err } = await supabase.from('ujian').insert(payload);
+        const { data, error: err } = await supabase.from('ujian').insert(payload).select('id').single();
         if (err) throw err;
+        ujianId = data.id;
       }
+
+      // Insert soal ke soal_ujian dengan urutan sesuai pilihan
+      const soalRows = selectedSoal.map((soalId, idx) => ({
+        ujian_id: ujianId,
+        soal_id:  soalId,
+        urutan:   idx + 1,
+      }));
+      const { error: soalErr } = await supabase.from('soal_ujian').insert(soalRows);
+      if (soalErr) throw soalErr;
+
       setShowModal(false);
       loadUjian();
     } catch(e) { setError(e.message || 'Terjadi kesalahan'); }
@@ -297,6 +331,40 @@ export default function KelolaUjianPage() {
                 <input type="number" min={1} max={10} value={form.batas_pelanggaran} onChange={e => setF('batas_pelanggaran', +e.target.value)}
                   className="w-32 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
+            </div>
+
+            {/* Pilih Soal */}
+            <div className="border-t border-gray-100 pt-4">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
+                📝 Pilih Soal <span className="text-blue-600 font-bold">({selectedSoal.length} dipilih)</span>
+              </p>
+              {soalList.length === 0 ? (
+                <p className="text-sm text-gray-400 italic">Belum ada soal di bank soal. Tambahkan soal terlebih dahulu.</p>
+              ) : (
+                <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
+                  {soalList.map(s => {
+                    const checked = selectedSoal.includes(s.id);
+                    return (
+                      <label key={s.id} className={`flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-blue-50 transition-colors ${checked ? 'bg-blue-50' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setSelectedSoal(prev =>
+                            checked ? prev.filter(id => id !== s.id) : [...prev, s.id]
+                          )}
+                          className="mt-0.5 w-4 h-4 accent-blue-600 shrink-0"
+                        />
+                        <span className="flex-1 min-w-0">
+                          <span className="text-sm text-gray-800 line-clamp-1">{s.pertanyaan}</span>
+                          <span className="text-xs text-gray-400 mt-0.5 block">
+                            {s.tipe_soal} · bobot {s.bobot} · {s.mata_pelajaran?.nama || '—'}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">⚠️ {error}</div>}
