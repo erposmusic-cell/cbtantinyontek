@@ -27,6 +27,16 @@ function formatDurasi(mulai) {
   return `${m}m ${s}s`;
 }
 
+// Hitung durasi antara dua timestamp (untuk sesi yang sudah selesai)
+function formatSelisih(mulai, selesai) {
+  if (!mulai || !selesai) return '-';
+  const detik = Math.floor((new Date(selesai).getTime() - new Date(mulai).getTime()) / 1000);
+  if (detik < 0) return '-';
+  const m = Math.floor(detik / 60);
+  const s = detik % 60;
+  return `${m}m ${s}s`;
+}
+
 function formatWaktu(ts) {
   if (!ts) return '-';
   return new Date(ts).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -383,7 +393,7 @@ export default function MonitoringPage() {
                               {sesi.status === 'berlangsung'
                                 ? formatDurasi(sesi.waktu_mulai)
                                 : sesi.waktu_selesai
-                                  ? formatDurasi(sesi.waktu_mulai)
+                                  ? formatSelisih(sesi.waktu_mulai, sesi.waktu_selesai)
                                   : '-'
                               }
                             </td>
