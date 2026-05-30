@@ -46,7 +46,8 @@ const STATUS_CONFIG = {
   belum_mulai: { label: 'Belum Mulai', color: 'bg-gray-100 text-gray-600',   dot: 'bg-gray-400'   },
   berlangsung:  { label: 'Berlangsung', color: 'bg-blue-100 text-blue-700',   dot: 'bg-blue-500 animate-pulse' },
   selesai:      { label: 'Selesai',     color: 'bg-green-100 text-green-700', dot: 'bg-green-500'  },
-  dikunci:      { label: 'Dikunci',     color: 'bg-red-100 text-red-700',     dot: 'bg-red-500'    },
+  dikunci:        { label: 'Dikunci',        color: 'bg-red-100 text-red-700',    dot: 'bg-red-500'    },
+  diskualifikasi: { label: 'Diskualifikasi', color: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500' },
   timeout:      { label: 'Timeout',     color: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500'  },
 };
 
@@ -191,13 +192,25 @@ export default function MonitoringPage() {
     loadData(selectedUjian.id);
   }
 
+  // ── Pulihkan siswa diskualifikasi ──
+  async function pulihkanSiswa(sesi) {
+    setLocking(sesi.id);
+    await supabase
+      .from('sesi_ujian')
+      .update({ status: 'belum_mulai', jumlah_pelanggaran: 0 })
+      .eq('id', sesi.id);
+    setLocking(null);
+    loadData(selectedUjian.id);
+  }
+
   // ── Statistik ──
   const stats = {
     total:       sesiList.length,
     belumMulai:  sesiList.filter(s => s.status === 'belum_mulai').length,
     berlangsung: sesiList.filter(s => s.status === 'berlangsung').length,
     selesai:     sesiList.filter(s => s.status === 'selesai').length,
-    dikunci:     sesiList.filter(s => s.status === 'dikunci').length,
+    dikunci:        sesiList.filter(s => s.status === 'dikunci').length,
+    diskualifikasi: sesiList.filter(s => s.status === 'diskualifikasi').length,
     pelanggaran: pelanggaran.length,
   };
 
@@ -277,7 +290,8 @@ export default function MonitoringPage() {
               { label: 'Belum Mulai',     value: stats.belumMulai,  color: 'bg-gray-50  border-gray-200',  icon: '⏳' },
               { label: 'Berlangsung',     value: stats.berlangsung, color: 'bg-blue-50  border-blue-200',  icon: '✍️' },
               { label: 'Selesai',         value: stats.selesai,     color: 'bg-green-50 border-green-200', icon: '✅' },
-              { label: 'Dikunci',         value: stats.dikunci,     color: 'bg-red-50   border-red-200',   icon: '🔒' },
+              { label: 'Dikunci',         value: stats.dikunci,        color: 'bg-red-50    border-red-200',    icon: '🔒' },
+              { label: 'Diskualifikasi',  value: stats.diskualifikasi, color: 'bg-orange-50 border-orange-200', icon: '🚫' },
             ].map(({ label, value, color, icon }) => (
               <div key={label} className={`rounded-xl border p-4 ${color}`}>
                 <div className="text-2xl mb-1">{icon}</div>
@@ -327,6 +341,7 @@ export default function MonitoringPage() {
                   <option value="berlangsung">Berlangsung</option>
                   <option value="selesai">Selesai</option>
                   <option value="dikunci">Dikunci</option>
+                  <option value="diskualifikasi">Diskualifikasi</option>
                 </select>
                 <button
                   onClick={() => loadData(selectedUjian.id)}
@@ -435,19 +450,30 @@ export default function MonitoringPage() {
                               )}
                             </td>
                             <td className="px-3 py-3 text-right">
-                              {(sesi.status === 'berlangsung' || sesi.status === 'dikunci') && (
-                                <button
-                                  onClick={() => toggleKunci(sesi)}
-                                  disabled={isLocking}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                    sesi.status === 'dikunci'
-                                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                      : 'bg-red-100 text-red-700 hover:bg-red-200'
-                                  } disabled:opacity-50`}
-                                >
-                                  {isLocking ? '...' : sesi.status === 'dikunci' ? '🔓 Buka' : '🔒 Kunci'}
-                                </button>
-                              )}
+                              <div className="flex gap-1.5 justify-end">
+                                {(sesi.status === 'berlangsung' || sesi.status === 'dikunci') && (
+                                  <button
+                                    onClick={() => toggleKunci(sesi)}
+                                    disabled={isLocking}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                      sesi.status === 'dikunci'
+                                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                        : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                    } disabled:opacity-50`}
+                                  >
+                                    {isLocking ? '...' : sesi.status === 'dikunci' ? '🔓 Buka' : '🔒 Kunci'}
+                                  </button>
+                                )}
+                                {sesi.status === 'diskualifikasi' && (
+                                  <button
+                                    onClick={() => pulihkanSiswa(sesi)}
+                                    disabled={locking === sesi.id}
+                                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-orange-100 text-orange-700 hover:bg-orange-200 disabled:opacity-50 transition-all"
+                                  >
+                                    {locking === sesi.id ? '...' : '♻️ Pulihkan'}
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
