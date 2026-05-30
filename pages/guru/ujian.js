@@ -374,9 +374,6 @@ export default function KelolaUjianPage() {
                     )}
                   </div>
                 </div>
-                  placeholder="X IPA 1, X IPA 2"
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
