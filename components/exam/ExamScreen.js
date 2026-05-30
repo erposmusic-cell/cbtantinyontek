@@ -402,5 +402,157 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
               REC
             </div>
           )}
+
+          <ExamTimer durasiMenit={ujian.durasi_menit} onTimeout={handleSubmit} />
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar navigasi soal */}
+        <div className="w-48 bg-slate-800 border-r border-slate-700 p-4 overflow-y-auto shrink-0">
+          <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3">Navigasi Soal</p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {soalList.map((s, i) => {
+              let cls = 'w-8 h-8 rounded-lg text-xs font-bold cursor-pointer transition-all border-2 flex items-center justify-center ';
+              if (i === currentIdx) cls += 'bg-blue-600 text-white border-blue-700';
+              else if (flagged.has(s.id)) cls += 'bg-amber-500 text-white border-amber-600';
+              else if (jawaban[s.id] !== undefined) cls += 'bg-green-600 text-white border-green-700';
+              else cls += 'bg-slate-600 text-slate-300 border-slate-500';
+              return (
+                <button key={s.id} className={cls} onClick={() => setCurrentIdx(i)}>
+                  {i + 1}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-5 space-y-1.5 text-xs text-slate-500">
+            {[['bg-green-600','Sudah dijawab'],['bg-amber-500','Ditandai'],['bg-slate-600','Belum']].map(([bg, label]) => (
+              <div key={label} className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-sm ${bg}`} />
+                {label}
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowSubmitConfirm(true)}
+            className="w-full mt-6 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors"
+          >
+            ✔ Submit Ujian
+          </button>
+        </div>
+
+        {/* Area soal */}
+        <div className="flex-1 p-6 overflow-y-auto">
+          <div className="max-w-3xl mx-auto bg-slate-800 rounded-2xl p-7 border border-slate-700 animate-fade-in" key={soal.id}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                Soal {currentIdx + 1} dari {totalSoal}
+              </span>
+              <span className={`text-xs px-2 py-0.5 rounded font-semibold
+                ${soal.tingkat_kesulitan === 'sulit'  ? 'bg-red-900/50 text-red-300'    :
+                  soal.tingkat_kesulitan === 'sedang' ? 'bg-amber-900/50 text-amber-300' :
+                                                        'bg-green-900/50 text-green-300'}`}>
+                {soal.tingkat_kesulitan || 'sedang'}
+              </span>
+              <span className="text-xs text-blue-400">Bobot: {soal.bobot}</span>
+            </div>
+            <p className="text-slate-100 text-base leading-relaxed mb-6">{soal.pertanyaan}</p>
+
+            {soal.tipe_soal === 'pilihan_ganda' && <SoalPG soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'mcma'          && <SoalMCMA soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'benar_salah'   && <SoalBS soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'essay'         && <SoalEssay jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+
+            {/* Navigasi */}
+            <div className="flex items-center justify-between mt-8 pt-5 border-t border-slate-700">
+              <button
+                onClick={() => currentIdx > 0 && setCurrentIdx(i => i - 1)}
+                disabled={currentIdx === 0}
+                className="px-4 py-2 bg-slate-700 text-slate-300 text-sm font-semibold rounded-lg
+                           hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                ← Sebelumnya
+              </button>
+              <button
+                onClick={toggleFlag}
+                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors
+                  ${flagged.has(soal.id) ? 'bg-amber-500 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+              >
+                {flagged.has(soal.id) ? '🚩 Ditandai' : '🏳 Tandai'}
+              </button>
+              {currentIdx < totalSoal - 1 ? (
+                <button
+                  onClick={() => setCurrentIdx(i => i + 1)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  Selanjutnya →
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowSubmitConfirm(true)}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors"
+                >
+                  ✔ Selesai
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Kamera */}
+      {ujian.deteksi_wajah && (
+        <div className="fixed bottom-4 right-4 w-36 h-28 rounded-xl overflow-hidden border-2 border-slate-600 z-[9990] bg-black">
+          <video ref={videoRef} autoPlay muted className="w-full h-full object-cover scale-x-[-1]" />
+          <div className="absolute top-1.5 left-1.5 w-2 h-2 rounded-full bg-green-400" />
+        </div>
+      )}
+
+      {/* Modal Submit */}
+      {showSubmitConfirm && (
+        <div className="fixed inset-0 bg-black/60 z-[10000] flex items-center justify-center p-5">
+          <div className="bg-slate-800 border border-slate-600 rounded-2xl w-full max-w-sm shadow-2xl animate-fade-in">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700">
+              <span className="text-slate-100 font-bold">Konfirmasi Submit</span>
+              <button onClick={() => setShowSubmitConfirm(false)} className="text-slate-400 hover:text-slate-200 text-xl">✕</button>
+            </div>
+            <div className="p-6 text-slate-300">
+              <div className="text-center mb-5">
+                <div className="text-5xl mb-3">📋</div>
+                <p className="text-sm">Yakin ingin mengumpulkan jawaban?</p>
+              </div>
+              <div className="bg-slate-900/60 rounded-xl p-4 space-y-2 mb-4 text-sm">
+                <div className="flex justify-between"><span className="text-slate-400">Sudah dijawab</span><span className="text-green-400 font-bold">{answered} soal</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Belum dijawab</span><span className={`font-bold ${unanswered > 0 ? 'text-red-400' : 'text-green-400'}`}>{unanswered} soal</span></div>
+                <div className="flex justify-between"><span className="text-slate-400">Ditandai</span><span className="text-amber-400 font-bold">{flagged.size} soal</span></div>
+              </div>
+              {unanswered > 0 && (
+                <div className="bg-red-900/40 border border-red-700 rounded-lg p-3 text-red-300 text-xs mb-3">
+                  ⚠️ Masih ada {unanswered} soal yang belum dijawab!
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-700">
+              <button
+                onClick={() => setShowSubmitConfirm(false)}
+                disabled={submitting}
+                className="px-4 py-2 bg-slate-700 text-slate-300 text-sm font-semibold rounded-lg hover:bg-slate-600 disabled:opacity-40 transition-colors"
+              >
+                Kembali
+              </button>
+              <button
+                onClick={() => { setShowSubmitConfirm(false); handleSubmit(); }}
+                disabled={submitting}
+                className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
+              >
+                {submitting ? (
+                  <><span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />Menyimpan...</>
+                ) : '✔ Ya, Kumpulkan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
