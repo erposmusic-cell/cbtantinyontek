@@ -15,7 +15,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import AppLayout from '../../components/layout/AppLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from 'next/router';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabaseAdmin } from '../../lib/supabase';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -182,9 +182,10 @@ export default function PenggunaPage() {
       } else {
         if (!formEmail || !formPassword) throw new Error('Email dan password wajib diisi');
         if (formPassword.length < 6) throw new Error('Password minimal 6 karakter');
-        const { data: authData, error: authErr } = await supabase.auth.signUp({
+        const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
           email: formEmail, password: formPassword,
-          options: { data: { nama_lengkap: form.nama_lengkap, username: form.username, role: form.role } }
+          email_confirm: true,
+          user_metadata: { nama_lengkap: form.nama_lengkap, username: form.username, role: form.role }
         });
         if (authErr) throw authErr;
         if (authData?.user) {
@@ -297,15 +298,14 @@ export default function PenggunaPage() {
 
     for (const row of validRows) {
       try {
-        const { data: authData, error: authErr } = await supabase.auth.signUp({
+        const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
           email: row.email,
           password: row.password,
-          options: {
-            data: {
-              nama_lengkap: row.nama_lengkap,
-              username:     row.username,
-              role:         row.role || 'siswa',
-            }
+          email_confirm: true,
+          user_metadata: {
+            nama_lengkap: row.nama_lengkap,
+            username:     row.username,
+            role:         row.role || 'siswa',
           }
         });
         if (authErr) throw authErr;
