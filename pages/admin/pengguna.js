@@ -15,7 +15,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import AppLayout from '../../components/layout/AppLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { useRouter } from 'next/router';
-import { supabase, supabaseAdmin } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -182,18 +182,13 @@ export default function PenggunaPage() {
       } else {
         if (!formEmail || !formPassword) throw new Error('Email dan password wajib diisi');
         if (formPassword.length < 6) throw new Error('Password minimal 6 karakter');
-        const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
-          email: formEmail, password: formPassword,
-          email_confirm: true,
-          user_metadata: { nama_lengkap: form.nama_lengkap, username: form.username, role: form.role }
+        const res = await fetch('/api/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: formEmail, password: formPassword, profile: form }),
         });
-        if (authErr) throw authErr;
-        if (authData?.user) {
-          const { error: profErr } = await supabase.from('profiles').upsert({
-            id: authData.user.id, ...form, nomor_induk: form.nomor_induk || null, kelas: form.kelas || null,
-          });
-          if (profErr) throw profErr;
-        }
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Gagal membuat user');
       }
       setShowModal(false);
       fetchProfiles();
@@ -298,30 +293,24 @@ export default function PenggunaPage() {
 
     for (const row of validRows) {
       try {
-        const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
-          email: row.email,
-          password: row.password,
-          email_confirm: true,
-          user_metadata: {
-            nama_lengkap: row.nama_lengkap,
-            username:     row.username,
-            role:         row.role || 'siswa',
-          }
+        const importRes = await fetch('/api/create-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: row.email,
+            password: row.password,
+            profile: {
+              nama_lengkap: row.nama_lengkap,
+              username:     row.username,
+              role:         row.role || 'siswa',
+              nomor_induk:  row.nomor_induk || null,
+              kelas:        row.kelas       || null,
+              aktif:        true,
+            },
+          }),
         });
-        if (authErr) throw authErr;
-
-        if (authData?.user) {
-          const { error: profErr } = await supabase.from('profiles').upsert({
-            id:           authData.user.id,
-            nama_lengkap: row.nama_lengkap,
-            username:     row.username,
-            role:         row.role || 'siswa',
-            nomor_induk:  row.nomor_induk || null,
-            kelas:        row.kelas       || null,
-            aktif:        true,
-          });
-          if (profErr) throw profErr;
-        }
+        const importJson = await importRes.json();
+        if (!importRes.ok) throw new Error(importJson.error || 'Gagal membuat user');
       } catch (e) {
         errors.push({ nama: row.nama_lengkap, error: e.message });
       }
