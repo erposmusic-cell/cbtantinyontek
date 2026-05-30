@@ -92,6 +92,7 @@ export default function SoalPage() {
       bobot: soal.bobot, tingkat_kesulitan: soal.tingkat_kesulitan,
       mata_pelajaran_id: soal.mata_pelajaran_id || '', aktif: soal.aktif,
     });
+    setEssayKunci(soal.tipe_soal === 'essay' ? (soal.kunci_jawaban || '') : '');
     if (soal.pilihan_jawaban?.length > 0) {
       setPilihan(soal.pilihan_jawaban.map(p => ({ label: p.label, teks: p.teks, adalah_benar: p.adalah_benar, id: p.id })));
     } else {
@@ -125,6 +126,8 @@ export default function SoalPage() {
         bobot: form.bobot, tingkat_kesulitan: form.tingkat_kesulitan,
         mata_pelajaran_id: form.mata_pelajaran_id || null,
         guru_id: user.id, aktif: form.aktif,
+        // Kunci jawaban hanya relevan untuk essay; untuk tipe lain dikosongkan
+        kunci_jawaban: form.tipe_soal === 'essay' ? (essayKunci.trim() || null) : null,
       };
 
       let soalId = editTarget?.id;
