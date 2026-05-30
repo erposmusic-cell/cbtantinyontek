@@ -237,7 +237,7 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
     sesiId,
     siswaId: siswa.id,
     ujianId: ujian.id,
-    enabled: !!ujian.rekam_layar,
+    enabled: !!ujian.rekam_aktivitas,
   });
 
   // FIX BUG #3: getDisplayMedia() WAJIB dipanggil dari user gesture (klik tombol).
@@ -334,14 +334,14 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
               ⚠️ Pelanggaran: {violations.length}
             </div>
           )}
-          {ujian.rekam_layar && screenRecorder.status === 'recording' && (
+          {ujian.rekam_aktivitas && screenRecorder.status === 'recording' && (
             <div className="flex items-center gap-1.5 bg-red-900/40 border border-red-700 text-red-300 text-xs px-3 py-1.5 rounded-lg">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
               REC
             </div>
           )}
           {/* FIX BUG #3: Tombol ini memberikan user gesture agar getDisplayMedia() diizinkan browser */}
-          {ujian.rekam_layar && screenRecorder.status === 'idle' && (
+          {ujian.rekam_aktivitas && screenRecorder.status === 'idle' && (
             <button
               onClick={screenRecorder.startRecording}
               className="flex items-center gap-1.5 bg-slate-700 border border-slate-500 text-slate-300 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-600 transition-colors"
