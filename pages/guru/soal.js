@@ -60,17 +60,18 @@ export default function SoalPage() {
 
   useEffect(() => { if (!loading && !user) router.push('/'); }, [user, loading]);
   useEffect(() => { if (user) { loadMapel(); loadSoal(); } }, [user]);
-  useEffect(() => { if (user) loadSoal(); }, [selectedMapel]);
+  useEffect(() => { if (user) loadSoal(selectedMapel, user.id); }, [selectedMapel]);
 
   async function loadMapel() {
     const { data } = await supabase.from('mata_pelajaran').select('*').order('nama');
     setMapel(data || []);
   }
 
-  async function loadSoal() {
+  async function loadSoal(mapelId = selectedMapel, guruId = user?.id) {
+    if (!guruId) return;
     setLoadingData(true);
-    let q = supabase.from('bank_soal').select('*, mata_pelajaran(nama), pilihan_jawaban(*)').eq('guru_id', user.id).order('created_at', { ascending: false });
-    if (selectedMapel) q = q.eq('mata_pelajaran_id', selectedMapel);
+    let q = supabase.from('bank_soal').select('*, mata_pelajaran(nama), pilihan_jawaban(*)').eq('guru_id', guruId).order('created_at', { ascending: false });
+    if (mapelId) q = q.eq('mata_pelajaran_id', mapelId);
     const { data } = await q;
     setSoalList(data || []);
     setLoadingData(false);
