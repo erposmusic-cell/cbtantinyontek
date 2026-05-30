@@ -25,7 +25,6 @@ function Modal({ title, onClose, children }) {
   );
 }
 
-// Daftar kelas yang tersedia — sesuaikan dengan jenjang sekolah
 const KELAS_LIST = ['7A','7B','7C','8A','8B','8C','9A','9B','9C','10A','10B','10C','11A','11B','11C','12A','12B','12C'];
 
 function generateToken() {
@@ -128,11 +127,9 @@ export default function KelolaUjianPage() {
       rekam_aktivitas: u.rekam_aktivitas,
       token_ujian: u.token_ujian || '',
     });
-    // Load soal yang sudah dipilih untuk ujian ini
     const { data: existingSoal } = await supabase
       .from('soal_ujian').select('soal_id').eq('ujian_id', u.id).order('urutan');
     setSelectedSoal((existingSoal || []).map(r => r.soal_id));
-    // Load peserta yang sudah terdaftar
     const { data: existingPeserta } = await supabase
       .from('peserta_ujian').select('siswa_id').eq('ujian_id', u.id).eq('diizinkan', true);
     setSelectedSiswa((existingPeserta || []).map(r => r.siswa_id));
@@ -164,7 +161,6 @@ export default function KelolaUjianPage() {
         const { error: err } = await supabase.from('ujian').update(payload).eq('id', editTarget.id);
         if (err) throw err;
         ujianId = editTarget.id;
-        // Hapus soal lama, ganti dengan pilihan baru
         await supabase.from('soal_ujian').delete().eq('ujian_id', ujianId);
       } else {
         const { data, error: err } = await supabase.from('ujian').insert(payload).select('id').single();
@@ -172,7 +168,6 @@ export default function KelolaUjianPage() {
         ujianId = data.id;
       }
 
-      // Insert soal ke soal_ujian dengan urutan sesuai pilihan
       const soalRows = selectedSoal.map((soalId, idx) => ({
         ujian_id: ujianId,
         soal_id:  soalId,
@@ -181,7 +176,6 @@ export default function KelolaUjianPage() {
       const { error: soalErr } = await supabase.from('soal_ujian').insert(soalRows);
       if (soalErr) throw soalErr;
 
-      // Simpan peserta ujian (hapus lama, insert baru)
       await supabase.from('peserta_ujian').delete().eq('ujian_id', ujianId);
       if (selectedSiswa.length > 0) {
         const pesertaRows = selectedSiswa.map(siswaId => ({
@@ -279,7 +273,7 @@ export default function KelolaUjianPage() {
                   </tr>
                 ))}
                 {ujianList.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400">Belum ada ujian. Klik "+ Buat Ujian" untuk mulai!</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-12 text-center text-gray-400">Belum ada ujian. Klik "+ Buat Ujian" untuk mulai!</td></tr>
                 )}
               </tbody>
             </table>
@@ -304,6 +298,7 @@ export default function KelolaUjianPage() {
                 placeholder="Keterangan ujian (opsional)"
                 className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5">Mata Pelajaran</label>
@@ -314,67 +309,71 @@ export default function KelolaUjianPage() {
                 </select>
               </div>
               <div>
-                {/* Kelas Target */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">
-                    Kelas Target <span className="text-gray-400 font-normal">(kosong = semua kelas)</span>
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {KELAS_LIST.map(k => {
-                      const checked = form.kelas_target.includes(k);
-                      return (
-                        <label key={k} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 cursor-pointer text-sm font-semibold transition-all ${
-                          checked ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                        }`}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => setF('kelas_target', checked
-                              ? form.kelas_target.filter(c => c !== k)
-                              : [...form.kelas_target, k]
-                            )}
-                            className="hidden"
-                          />
-                          {k}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Token Ujian */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Token Ujian <span className="text-gray-400 font-normal">(siswa wajib input token untuk masuk)</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={form.token_ujian}
-                      onChange={e => setF('token_ujian', e.target.value.toUpperCase())}
-                      maxLength={10}
-                      placeholder="Kosongkan jika tidak pakai token"
-                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setF('token_ujian', generateToken())}
-                      className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg transition-colors whitespace-nowrap"
-                    >
-                      🔀 Generate
-                    </button>
-                    {form.token_ujian && (
-                      <button
-                        type="button"
-                        onClick={() => setF('token_ujian', '')}
-                        className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg transition-colors"
-                      >
-                        Hapus
-                      </button>
-                    )}
-                  </div>
-                </div>
+                {/* kolom kanan grid — sengaja kosong atau bisa diisi field lain */}
+              </div>
             </div>
+
+            {/* Kelas Target */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-2">
+                Kelas Target <span className="text-gray-400 font-normal">(kosong = semua kelas)</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {KELAS_LIST.map(k => {
+                  const checked = form.kelas_target.includes(k);
+                  return (
+                    <label key={k} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 cursor-pointer text-sm font-semibold transition-all ${
+                      checked ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => setF('kelas_target', checked
+                          ? form.kelas_target.filter(c => c !== k)
+                          : [...form.kelas_target, k]
+                        )}
+                        className="hidden"
+                      />
+                      {k}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Token Ujian */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1">
+                Token Ujian <span className="text-gray-400 font-normal">(siswa wajib input token untuk masuk)</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={form.token_ujian}
+                  onChange={e => setF('token_ujian', e.target.value.toUpperCase())}
+                  maxLength={10}
+                  placeholder="Kosongkan jika tidak pakai token"
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setF('token_ujian', generateToken())}
+                  className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg transition-colors whitespace-nowrap"
+                >
+                  🔀 Generate
+                </button>
+                {form.token_ujian && (
+                  <button
+                    type="button"
+                    onClick={() => setF('token_ujian', '')}
+                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg transition-colors"
+                  >
+                    Hapus
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5">Waktu Mulai <span className="text-red-500">*</span></label>
@@ -387,6 +386,7 @@ export default function KelolaUjianPage() {
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
+
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1.5">Durasi (menit)</label>
