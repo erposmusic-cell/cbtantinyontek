@@ -1,582 +1,346 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import AppLayout from '../../components/layout/AppLayout';
+import ExamScreen from '../../components/exam/ExamScreen';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 
-const STATUS_COLOR = {
-  draft:      'bg-gray-100 text-gray-600',
-  aktif:      'bg-green-100 text-green-700',
-  selesai:    'bg-blue-100 text-blue-700',
-  dibatalkan: 'bg-red-100 text-red-600',
-};
-
-function Modal({ title, onClose, children }) {
+function HasilUjian({ result, ujian, siswa, onClose }) {
+  const lulus = result.nilai >= ujian.passing_grade;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
-          <h2 className="text-lg font-bold text-gray-900">{title}</h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 text-xl">&times;</button>
+    <div className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-500 flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl p-10 max-w-md w-full text-center shadow-2xl animate-fade-in">
+        <h2 className="text-xl font-extrabold mb-1">{ujian.judul}</h2>
+        <p className="text-gray-500 text-sm mb-6">{siswa.nama_lengkap}</p>
+        <div className={`w-40 h-40 rounded-full mx-auto mb-6 flex flex-col items-center justify-center border-8
+          ${lulus ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}`}>
+          <span className={`text-5xl font-extrabold ${lulus ? 'text-green-600' : 'text-red-600'}`}>{result.nilai}</span>
+          <span className="text-xs text-gray-500">dari 100</span>
         </div>
-        <div className="px-6 py-5 overflow-y-auto">{children}</div>
+        <div className={`text-lg font-bold mb-5 ${lulus ? 'text-green-600' : 'text-red-600'}`}>
+          {lulus ? '🎉 LULUS' : '😔 TIDAK LULUS'}
+        </div>
+        <div className="bg-gray-50 rounded-xl p-4 mb-5 text-left space-y-2 text-sm">
+          {[
+            ['Soal Dijawab', `${result.answered} / ${result.totalSoal}`],
+            ['Nilai Minimum', `${ujian.passing_grade}`],
+            ['Pelanggaran', `${result.violations?.length || 0} kali`],
+          ].map(([k, v]) => (
+            <div key={k} className="flex justify-between py-1.5 border-b border-gray-200 last:border-0">
+              <span className="text-gray-500">{k}</span>
+              <span className="font-semibold">{v}</span>
+            </div>
+          ))}
+        </div>
+        <div className="bg-blue-50 border border-blue-200 text-blue-700 text-xs rounded-lg p-3 mb-4 text-left">
+          📝 Soal essay akan dikoreksi manual oleh guru dan nilai mungkin berubah.
+        </div>
+        <button
+          onClick={onClose}
+          className="w-full py-3.5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl transition-colors"
+        >
+          Kembali ke Beranda
+        </button>
       </div>
     </div>
   );
 }
 
-// Daftar kelas yang tersedia — sesuaikan dengan jenjang sekolah
-const KELAS_LIST = ['7A','7B','7C','8A','8B','8C','9A','9B','9C','10A','10B','10C','11A','11B','11C','12A','12B','12C'];
-
-function generateToken() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
-
-const FORM_DEFAULT = {
-  judul: '', deskripsi: '', mata_pelajaran_id: '', kelas_target: [],
-  waktu_mulai: '', waktu_selesai: '', durasi_menit: 60, jumlah_soal: 10,
-  acak_soal: true, acak_pilihan: true, tampilkan_nilai: false, passing_grade: 75,
-  status: 'draft', wajib_fullscreen: true, deteksi_pindah_tab: true,
-  blokir_copy_paste: true, deteksi_wajah: false, batas_pelanggaran: 3,
-  kunci_browser: true, watermark_nama: true, rekam_aktivitas: true,
-  token_ujian: '',
-};
-
-export default function KelolaUjianPage() {
+export default function SiswaUjianPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [ujianList, setUjianList] = useState([]);
-  const [mapel, setMapel] = useState([]);
+  const [ujianList, setUjianList]     = useState([]);
+  const [mapelList, setMapelList]     = useState([]);
+  const [filterMapel, setFilterMapel] = useState('');
+  const [tokenInput, setTokenInput]   = useState({});
+  const [tokenError, setTokenError]   = useState({});
+  const [examState, setExamState]     = useState(null);
+  const [examResult, setExamResult]   = useState(null);
   const [loadingData, setLoadingData] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editTarget, setEditTarget] = useState(null);
-  const [form, setForm] = useState(FORM_DEFAULT);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState(null);
-  const [soalList, setSoalList]           = useState([]);
-  const [selectedSoal, setSelectedSoal]   = useState([]);
-  const [siswaList, setSiswaList]         = useState([]);
-  const [selectedSiswa, setSelectedSiswa] = useState([]);
-  const [filterKelas, setFilterKelas]     = useState('');
 
-  useEffect(() => { if (!loading && !user) router.push('/'); }, [user, loading]);
-  useEffect(() => { if (user) { loadUjian(); loadMapel(); loadSoal(); loadSiswa(); } }, [user]);
+  useEffect(() => {
+    if (!loading && !user) router.push('/');
+    if (user?.role !== 'siswa') router.push('/dashboard');
+  }, [user, loading]);
+
+  useEffect(() => {
+    if (user) { loadUjian(); loadMapel(); }
+  }, [user]);
+
+  async function loadMapel() {
+    const { data } = await supabase.from('mata_pelajaran').select('id, nama').order('nama');
+    setMapelList(data || []);
+  }
 
   async function loadUjian() {
-    const { data } = await supabase
-      .from('ujian').select('*, mata_pelajaran(nama)')
-      .order('created_at', { ascending: false });
-    setUjianList(data || []);
+    setLoadingData(true);
+
+    // Ambil semua ujian aktif
+    const { data: semuaUjian } = await supabase
+      .from('ujian')
+      .select('*, mata_pelajaran(nama)')
+      .eq('status', 'aktif')
+      .order('waktu_mulai', { ascending: true });
+
+    if (!semuaUjian?.length) { setUjianList([]); setLoadingData(false); return; }
+
+    // Cek ujian mana yang punya daftar peserta terbatas
+    const ujianIds = semuaUjian.map(u => u.id);
+    const { data: pesertaData } = await supabase
+      .from('peserta_ujian')
+      .select('ujian_id, siswa_id, diizinkan')
+      .in('ujian_id', ujianIds);
+
+    // Kelompokkan peserta per ujian
+    const pesertaMap = {};
+    (pesertaData || []).forEach(p => {
+      if (!pesertaMap[p.ujian_id]) pesertaMap[p.ujian_id] = [];
+      pesertaMap[p.ujian_id].push(p);
+    });
+
+    // Filter: tampilkan ujian jika (a) tidak ada daftar peserta = terbuka untuk semua,
+    // atau (b) siswa ini terdaftar dan diizinkan
+    const ujianTersedia = semuaUjian.filter(u => {
+      const peserta = pesertaMap[u.id];
+      if (!peserta || peserta.length === 0) return true; // terbuka
+      return peserta.some(p => p.siswa_id === user.id && p.diizinkan);
+    });
+
+    setUjianList(ujianTersedia);
     setLoadingData(false);
   }
 
-  async function loadMapel() {
-    const { data } = await supabase.from('mata_pelajaran').select('*').order('nama');
-    setMapel(data || []);
+  async function startExam(ujian) {
+    // Validasi token jika ujian memakai token
+    if (ujian.token_ujian) {
+      const inputToken = (tokenInput[ujian.id] || '').trim().toUpperCase();
+      if (inputToken !== ujian.token_ujian.toUpperCase()) {
+        setTokenError(prev => ({ ...prev, [ujian.id]: 'Token salah. Periksa kembali.' }));
+        return;
+      }
+      setTokenError(prev => ({ ...prev, [ujian.id]: '' }));
+    }
+    // Cek apakah siswa sudah punya sesi untuk ujian ini
+    const { data: sesiExisting } = await supabase
+      .from('sesi_ujian')
+      .select('id, status')
+      .eq('ujian_id', ujian.id)
+      .eq('siswa_id', user.id)
+      .maybeSingle();
+
+    if (sesiExisting?.status === 'selesai') {
+      alert('Kamu sudah mengerjakan ujian ini. Tidak bisa mengulang.');
+      return;
+    }
+
+    // Ambil soal ujian
+    const { data: soalUjian } = await supabase
+      .from('soal_ujian')
+      .select('*, bank_soal(*, pilihan_jawaban(*))')
+      .eq('ujian_id', ujian.id)
+      .order('urutan');
+
+    const soal = soalUjian?.map(su => ({
+      ...su.bank_soal,
+      pilihan: su.bank_soal?.pilihan_jawaban || [],
+      bobot: su.bobot_override || su.bank_soal?.bobot || 1,
+    })) || [];
+
+    const finalSoal = ujian.acak_soal
+      ? [...soal].sort(() => Math.random() - 0.5)
+      : soal;
+
+    // Jika sesi berlangsung sudah ada (misal browser crash), lanjutkan sesi itu
+    let sesiId = sesiExisting?.id;
+    if (!sesiId) {
+      const { data: sesi, error: sesiErr } = await supabase
+        .from('sesi_ujian')
+        .insert({ ujian_id: ujian.id, siswa_id: user.id, status: 'berlangsung', waktu_mulai: new Date().toISOString() })
+        .select('id')
+        .single();
+      if (sesiErr) {
+        alert('Gagal memulai ujian. Silakan coba lagi.');
+        return;
+      }
+      sesiId = sesi.id;
+    }
+
+    setExamState({ ujian, soal: finalSoal, sesiId });
+    setExamResult(null);
   }
 
-  async function loadSoal() {
-    const { data } = await supabase
-      .from('bank_soal')
-      .select('id, pertanyaan, tipe_soal, bobot, mata_pelajaran_id, mata_pelajaran(nama)')
-      .eq('aktif', true)
-      .order('created_at', { ascending: false });
-    setSoalList(data || []);
-  }
+  async function finishExam(result) {
+    if (!examState) return;
 
-  async function loadSiswa() {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, nama_lengkap, kelas, nomor_induk')
-      .eq('role', 'siswa')
-      .order('kelas')
-      .order('nama_lengkap');
-    setSiswaList(data || []);
-  }
+    // Simpan snapshot sebelum setExamState(null) untuk menghindari race condition
+    const ujianSnapshot = examState.ujian;
+    const soalSnapshot  = examState.soal;
+    const sesiId        = examState.sesiId;
 
-  async function updateStatus(id, status) {
-    await supabase.from('ujian').update({ status }).eq('id', id);
-    setUjianList(prev => prev.map(u => u.id === id ? { ...u, status } : u));
-  }
+    // Tampilkan loading sementara server memproses
+    setExamState(null);
 
-  function openAdd() {
-    setEditTarget(null);
-    setForm(FORM_DEFAULT);
-    setSelectedSoal([]);
-    setSelectedSiswa([]);
-    setFilterKelas('');
-    setError('');
-    setShowModal(true);
-  }
+    let nilaiAkhir = 0;
 
-  async function openEdit(u) {
-    setEditTarget(u);
-    setForm({
-      judul: u.judul, deskripsi: u.deskripsi || '', mata_pelajaran_id: u.mata_pelajaran_id || '',
-      kelas_target: u.kelas_target || [],
-      waktu_mulai: u.waktu_mulai ? u.waktu_mulai.slice(0, 16) : '',
-      waktu_selesai: u.waktu_selesai ? u.waktu_selesai.slice(0, 16) : '',
-      durasi_menit: u.durasi_menit, jumlah_soal: u.jumlah_soal,
-      acak_soal: u.acak_soal, acak_pilihan: u.acak_pilihan,
-      tampilkan_nilai: u.tampilkan_nilai, passing_grade: u.passing_grade,
-      status: u.status, wajib_fullscreen: u.wajib_fullscreen,
-      deteksi_pindah_tab: u.deteksi_pindah_tab, blokir_copy_paste: u.blokir_copy_paste,
-      deteksi_wajah: u.deteksi_wajah, batas_pelanggaran: u.batas_pelanggaran,
-      kunci_browser: u.kunci_browser, watermark_nama: u.watermark_nama,
-      rekam_aktivitas: u.rekam_aktivitas,
-      token_ujian: u.token_ujian || '',
-    });
-    // Load soal yang sudah dipilih untuk ujian ini
-    const { data: existingSoal } = await supabase
-      .from('soal_ujian').select('soal_id').eq('ujian_id', u.id).order('urutan');
-    setSelectedSoal((existingSoal || []).map(r => r.soal_id));
-    // Load peserta yang sudah terdaftar
-    const { data: existingPeserta } = await supabase
-      .from('peserta_ujian').select('siswa_id').eq('ujian_id', u.id).eq('diizinkan', true);
-    setSelectedSiswa((existingPeserta || []).map(r => r.siswa_id));
-    setFilterKelas('');
-    setError('');
-    setShowModal(true);
-  }
+    if (sesiId) {
+      // 1. Simpan setiap jawaban siswa ke tabel jawaban_siswa
+      const jawabanRows = soalSnapshot
+        .filter(q => result.jawaban?.[q.id] !== undefined)
+        .map(q => {
+          const raw  = result.jawaban[q.id];
+          const tipe = q.tipe_soal;
+          const row  = {
+            sesi_id:  sesiId,
+            soal_id:  q.id,
+            waktu_jawab: new Date().toISOString(),
+          };
+          if (tipe === 'pilihan_ganda') {
+            row.pilihan_id = raw;                      // UUID pilihan
+          } else if (tipe === 'mcma') {
+            row.pilihan_ids = Array.isArray(raw) ? raw : [raw];
+          } else if (tipe === 'benar_salah') {
+            row.jawaban_bs = Array.isArray(raw) ? raw : [];
+          } else if (tipe === 'essay') {
+            row.jawaban_essay = String(raw || '');
+          }
+          return row;
+        });
 
-  const setF = (key, val) => setForm(f => ({ ...f, [key]: val }));
-
-  async function handleSave() {
-    if (!form.judul.trim())      { setError('Judul ujian wajib diisi'); return; }
-    if (!form.waktu_mulai)       { setError('Waktu mulai wajib diisi'); return; }
-    if (!form.waktu_selesai)     { setError('Waktu selesai wajib diisi'); return; }
-    if (selectedSoal.length === 0) { setError('Pilih minimal 1 soal untuk ujian ini'); return; }
-    setSaving(true); setError('');
-    try {
-      const payload = {
-        ...form,
-        jumlah_soal: selectedSoal.length,
-        kelas_target: form.kelas_target.length > 0 ? form.kelas_target : [],
-        mata_pelajaran_id: form.mata_pelajaran_id || null,
-        token_ujian: form.token_ujian.trim() || null,
-        guru_id: user.id,
-      };
-
-      let ujianId;
-      if (editTarget) {
-        const { error: err } = await supabase.from('ujian').update(payload).eq('id', editTarget.id);
-        if (err) throw err;
-        ujianId = editTarget.id;
-        // Hapus soal lama, ganti dengan pilihan baru
-        await supabase.from('soal_ujian').delete().eq('ujian_id', ujianId);
-      } else {
-        const { data, error: err } = await supabase.from('ujian').insert(payload).select('id').single();
-        if (err) throw err;
-        ujianId = data.id;
+      if (jawabanRows.length > 0) {
+        await supabase.from('jawaban_siswa').insert(jawabanRows);
       }
 
-      // Insert soal ke soal_ujian dengan urutan sesuai pilihan
-      const soalRows = selectedSoal.map((soalId, idx) => ({
-        ujian_id: ujianId,
-        soal_id:  soalId,
-        urutan:   idx + 1,
-      }));
-      const { error: soalErr } = await supabase.from('soal_ujian').insert(soalRows);
-      if (soalErr) throw soalErr;
+      // 2. Hitung nilai via RPC server (koreksi otomatis PG/MCMA/BS)
+      const { data: nilaiData } = await supabase
+        .rpc('hitung_nilai_sesi', { p_sesi_id: sesiId });
+      nilaiAkhir = nilaiData ?? 0;
 
-      // Simpan peserta ujian (hapus lama, insert baru)
-      await supabase.from('peserta_ujian').delete().eq('ujian_id', ujianId);
-      if (selectedSiswa.length > 0) {
-        const pesertaRows = selectedSiswa.map(siswaId => ({
-          ujian_id:   ujianId,
-          siswa_id:   siswaId,
-          diizinkan:  true,
-        }));
-        const { error: pesertaErr } = await supabase.from('peserta_ujian').insert(pesertaRows);
-        if (pesertaErr) throw pesertaErr;
-      }
+      // 3. Update sesi_ujian: status selesai + waktu_selesai + jumlah_pelanggaran
+      await supabase.from('sesi_ujian').update({
+        status:               'selesai',
+        waktu_selesai:        new Date().toISOString(),
+        jumlah_pelanggaran:   result.violations?.length ?? 0,
+        nilai_akhir:          nilaiAkhir,
+      }).eq('id', sesiId);
+    } else {
+      // Fallback jika sesiId undefined (Bug #7 belum ter-handle): estimasi dari bobot
+      const totalBobot  = soalSnapshot.reduce((s, q) => s + (q.bobot || 1), 0);
+      const bobotDijawab = soalSnapshot
+        .filter(q => result.jawaban?.[q.id] !== undefined)
+        .reduce((s, q) => s + (q.bobot || 1), 0);
+      nilaiAkhir = totalBobot > 0 ? Math.round((bobotDijawab / totalBobot) * 100) : 0;
+    }
 
-      setShowModal(false);
-      loadUjian();
-    } catch(e) { setError(e.message || 'Terjadi kesalahan'); }
-    setSaving(false);
-  }
-
-  async function handleDelete(u) {
-    await supabase.from('ujian').delete().eq('id', u.id);
-    setConfirmDelete(null);
-    loadUjian();
+    setExamResult({ ...result, nilai: nilaiAkhir, ujian: ujianSnapshot });
   }
 
   if (loading || !user) return null;
 
+  if (examState) {
+    return (
+      <ExamScreen
+        ujian={examState.ujian}
+        soalList={examState.soal}
+        siswa={user}
+        sesiId={examState.sesiId}
+        onFinish={finishExam}
+      />
+    );
+  }
+
+  if (examResult) {
+    return <HasilUjian result={examResult} ujian={examResult.ujian} siswa={user} onClose={() => setExamResult(null)} />;
+  }
+
   return (
-    <AppLayout title="Kelola Ujian">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-gray-900">📋 Kelola Ujian</h1>
-          <p className="text-gray-500 text-sm mt-1">Buat dan kelola ujian</p>
+    <AppLayout title="Ujian Tersedia">
+      <div className="mb-6">
+        <h1 className="text-2xl font-extrabold text-gray-900">📝 Ujian Tersedia</h1>
+        <p className="text-gray-500 text-sm mt-1">Daftar ujian yang dapat Anda ikuti</p>
+      </div>
+
+      {/* Filter Mata Pelajaran */}
+      {mapelList.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => setFilterMapel('')}
+            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
+              filterMapel === '' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            Semua
+          </button>
+          {mapelList.map(m => (
+            <button
+              key={m.id}
+              onClick={() => setFilterMapel(m.id)}
+              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
+                filterMapel === m.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {m.nama}
+            </button>
+          ))}
         </div>
-        <button onClick={openAdd} className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl transition-colors">
-          + Buat Ujian
-        </button>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        {loadingData ? (
-          <div className="flex items-center justify-center h-40 text-gray-400">
-            <div className="w-7 h-7 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mr-3" />Memuat data...
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  {['Judul','Mata Pelajaran','Durasi','Soal','Token','Status','Aksi'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {ujianList.map(u => (
-                  <tr key={u.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-semibold text-gray-900">{u.judul}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Passing: {u.passing_grade}%</p>
-                      {u.kelas_target?.length > 0 && (
-                        <p className="text-xs text-blue-500 mt-0.5">{u.kelas_target.join(', ')}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{u.mata_pelajaran?.nama || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{u.durasi_menit} menit</td>
-                    <td className="px-4 py-3 text-sm font-bold text-gray-900">{u.jumlah_soal}</td>
-                    <td className="px-4 py-3">
-                      {u.token_ujian ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-sm tracking-widest text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg">{u.token_ujian}</span>
-                          <button
-                            onClick={() => navigator.clipboard.writeText(u.token_ujian)}
-                            className="text-gray-400 hover:text-gray-600 text-xs"
-                            title="Salin token"
-                          >📋</button>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex text-xs font-semibold px-2.5 py-0.5 rounded-full ${STATUS_COLOR[u.status]}`}>{u.status}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2 flex-wrap">
-                        {u.status === 'draft' && (
-                          <button onClick={() => updateStatus(u.id, 'aktif')} className="px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-semibold rounded-lg transition-colors">Aktifkan</button>
-                        )}
-                        {u.status === 'aktif' && (
-                          <button onClick={() => updateStatus(u.id, 'selesai')} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg transition-colors">Selesaikan</button>
-                        )}
-                        <button onClick={() => openEdit(u)} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-semibold rounded-lg transition-colors">Edit</button>
-                        <button onClick={() => setConfirmDelete(u)} className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold rounded-lg transition-colors">Hapus</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {ujianList.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-12 text-center text-gray-400">Belum ada ujian. Klik "+ Buat Ujian" untuk mulai!</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Modal Buat/Edit Ujian */}
-      {showModal && (
-        <Modal title={editTarget ? 'Edit Ujian' : 'Buat Ujian Baru'} onClose={() => setShowModal(false)}>
-          <div className="space-y-4">
-            {/* Info Dasar */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Judul Ujian <span className="text-red-500">*</span></label>
-              <input type="text" value={form.judul} onChange={e => setF('judul', e.target.value)}
-                placeholder="Contoh: UTS Matematika Kelas X"
-                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1.5">Deskripsi</label>
-              <textarea value={form.deskripsi} onChange={e => setF('deskripsi', e.target.value)} rows={2}
-                placeholder="Keterangan ujian (opsional)"
-                className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Mata Pelajaran</label>
-                <select value={form.mata_pelajaran_id} onChange={e => setF('mata_pelajaran_id', e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                  <option value="">— Pilih —</option>
-                  {mapel.map(m => <option key={m.id} value={m.id}>{m.nama}</option>)}
-                </select>
-              </div>
-              <div>
-                {/* Kelas Target */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">
-                    Kelas Target <span className="text-gray-400 font-normal">(kosong = semua kelas)</span>
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {KELAS_LIST.map(k => {
-                      const checked = form.kelas_target.includes(k);
-                      return (
-                        <label key={k} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border-2 cursor-pointer text-sm font-semibold transition-all ${
-                          checked ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                        }`}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => setF('kelas_target', checked
-                              ? form.kelas_target.filter(c => c !== k)
-                              : [...form.kelas_target, k]
-                            )}
-                            className="hidden"
-                          />
-                          {k}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Token Ujian */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Token Ujian <span className="text-gray-400 font-normal">(siswa wajib input token untuk masuk)</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={form.token_ujian}
-                      onChange={e => setF('token_ujian', e.target.value.toUpperCase())}
-                      maxLength={10}
-                      placeholder="Kosongkan jika tidak pakai token"
-                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setF('token_ujian', generateToken())}
-                      className="px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold rounded-lg transition-colors whitespace-nowrap"
-                    >
-                      🔀 Generate
-                    </button>
-                    {form.token_ujian && (
-                      <button
-                        type="button"
-                        onClick={() => setF('token_ujian', '')}
-                        className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-lg transition-colors"
-                      >
-                        Hapus
-                      </button>
-                    )}
-                  </div>
-                </div>
-                  placeholder="X IPA 1, X IPA 2"
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Waktu Mulai <span className="text-red-500">*</span></label>
-                <input type="datetime-local" value={form.waktu_mulai} onChange={e => setF('waktu_mulai', e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Waktu Selesai <span className="text-red-500">*</span></label>
-                <input type="datetime-local" value={form.waktu_selesai} onChange={e => setF('waktu_selesai', e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Durasi (menit)</label>
-                <input type="number" min={1} value={form.durasi_menit} onChange={e => setF('durasi_menit', +e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Jumlah Soal</label>
-                <input type="number" min={1} value={form.jumlah_soal} onChange={e => setF('jumlah_soal', +e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Passing Grade (%)</label>
-                <input type="number" min={0} max={100} value={form.passing_grade} onChange={e => setF('passing_grade', +e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-            </div>
-
-            {/* Pengaturan Ujian */}
-            <div className="border-t border-gray-100 pt-4">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Pengaturan Ujian</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { key: 'acak_soal', label: 'Acak urutan soal' },
-                  { key: 'acak_pilihan', label: 'Acak pilihan jawaban' },
-                  { key: 'tampilkan_nilai', label: 'Tampilkan nilai setelah ujian' },
-                ].map(opt => (
-                  <label key={opt.key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" checked={form[opt.key]} onChange={e => setF(opt.key, e.target.checked)} className="w-4 h-4 accent-blue-600" />
-                    {opt.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Pengaturan Anti-Nyontek */}
-            <div className="border-t border-gray-100 pt-4">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">🔒 Anti-Nyontek</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { key: 'wajib_fullscreen', label: 'Wajib fullscreen' },
-                  { key: 'deteksi_pindah_tab', label: 'Deteksi pindah tab' },
-                  { key: 'blokir_copy_paste', label: 'Blokir copy-paste' },
-                  { key: 'kunci_browser', label: 'Kunci browser' },
-                  { key: 'watermark_nama', label: 'Watermark nama siswa' },
-                  { key: 'rekam_aktivitas', label: 'Rekam aktivitas' },
-                  { key: 'deteksi_wajah', label: 'Deteksi wajah (kamera)' },
-                ].map(opt => (
-                  <label key={opt.key} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" checked={form[opt.key]} onChange={e => setF(opt.key, e.target.checked)} className="w-4 h-4 accent-blue-600" />
-                    {opt.label}
-                  </label>
-                ))}
-              </div>
-              <div className="mt-3">
-                <label className="block text-xs font-semibold text-gray-700 mb-1.5">Maks. Pelanggaran sebelum dikunci</label>
-                <input type="number" min={1} max={10} value={form.batas_pelanggaran} onChange={e => setF('batas_pelanggaran', +e.target.value)}
-                  className="w-32 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-            </div>
-
-            {/* Pilih Soal */}
-            <div className="border-t border-gray-100 pt-4">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">
-                📝 Pilih Soal <span className="text-blue-600 font-bold">({selectedSoal.length} dipilih)</span>
-              </p>
-              {soalList.length === 0 ? (
-                <p className="text-sm text-gray-400 italic">Belum ada soal di bank soal. Tambahkan soal terlebih dahulu.</p>
-              ) : (
-                <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-                  {soalList.map(s => {
-                    const checked = selectedSoal.includes(s.id);
-                    return (
-                      <label key={s.id} className={`flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-blue-50 transition-colors ${checked ? 'bg-blue-50' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => setSelectedSoal(prev =>
-                            checked ? prev.filter(id => id !== s.id) : [...prev, s.id]
-                          )}
-                          className="mt-0.5 w-4 h-4 accent-blue-600 shrink-0"
-                        />
-                        <span className="flex-1 min-w-0">
-                          <span className="text-sm text-gray-800 line-clamp-1">{s.pertanyaan}</span>
-                          <span className="text-xs text-gray-400 mt-0.5 block">
-                            {s.tipe_soal} · bobot {s.bobot} · {s.mata_pelajaran?.nama || '—'}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Pilih Peserta */}
-            <div className="border-t border-gray-100 pt-4">
-              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-                  👥 Peserta <span className="text-blue-600 font-bold">({selectedSiswa.length} dipilih)</span>
-                  {selectedSiswa.length === 0 && <span className="text-amber-500 font-normal ml-1">— kosong = semua siswa boleh ikut</span>}
-                </p>
-                <div className="flex gap-2 items-center">
-                  <select
-                    value={filterKelas}
-                    onChange={e => setFilterKelas(e.target.value)}
-                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none"
-                  >
-                    <option value="">Semua Kelas</option>
-                    {[...new Set(siswaList.map(s => s.kelas).filter(Boolean))].sort().map(k => (
-                      <option key={k} value={k}>{k}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const filtered = siswaList.filter(s => !filterKelas || s.kelas === filterKelas).map(s => s.id);
-                      setSelectedSiswa(prev => [...new Set([...prev, ...filtered])]);
-                    }}
-                    className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold px-2 py-1 rounded-lg"
-                  >
-                    Pilih Semua
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedSiswa([])}
-                    className="text-xs bg-red-50 hover:bg-red-100 text-red-600 font-semibold px-2 py-1 rounded-lg"
-                  >
-                    Reset
-                  </button>
-                </div>
-              </div>
-              {siswaList.length === 0 ? (
-                <p className="text-sm text-gray-400 italic">Belum ada data siswa.</p>
-              ) : (
-                <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100">
-                  {siswaList
-                    .filter(s => !filterKelas || s.kelas === filterKelas)
-                    .map(s => {
-                      const checked = selectedSiswa.includes(s.id);
-                      return (
-                        <label key={s.id} className={`flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-blue-50 transition-colors ${checked ? 'bg-blue-50' : ''}`}>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => setSelectedSiswa(prev =>
-                              checked ? prev.filter(id => id !== s.id) : [...prev, s.id]
-                            )}
-                            className="w-4 h-4 accent-blue-600 shrink-0"
-                          />
-                          <span className="flex-1 min-w-0">
-                            <span className="text-sm text-gray-800">{s.nama_lengkap}</span>
-                            <span className="text-xs text-gray-400 ml-2">{s.kelas} · {s.nomor_induk}</span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                </div>
-              )}
-            </div>
-
-            {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">⚠️ {error}</div>}
-
-            <div className="flex gap-3 pt-1">
-              <button onClick={() => setShowModal(false)} className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl transition-colors">Batal</button>
-              <button onClick={handleSave} disabled={saving} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-sm font-semibold rounded-xl transition-colors">
-                {saving ? 'Menyimpan...' : (editTarget ? 'Simpan Perubahan' : 'Buat Ujian')}
-              </button>
-            </div>
-          </div>
-        </Modal>
       )}
 
-      {/* Konfirmasi Hapus */}
-      {confirmDelete && (
-        <Modal title="Hapus Ujian" onClose={() => setConfirmDelete(null)}>
-          <div className="text-center py-2">
-            <div className="text-5xl mb-4">🗑️</div>
-            <p className="text-gray-700 font-medium mb-1">Hapus ujian ini?</p>
-            <p className="text-gray-900 font-bold text-lg mb-1">{confirmDelete.judul}</p>
-            <p className="text-gray-500 text-sm mb-6">Semua data sesi dan jawaban siswa akan ikut terhapus.</p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmDelete(null)} className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl transition-colors">Batal</button>
-              <button onClick={() => handleDelete(confirmDelete)} className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">Ya, Hapus</button>
+      {loadingData ? (
+        <div className="flex items-center justify-center h-48 text-gray-400">
+          <div className="w-8 h-8 border-4 border-gray-200 border-t-primary-600 rounded-full animate-spin mr-3" />
+          Memuat ujian...
+        </div>
+      ) : ujianList.filter(u => !filterMapel || u.mata_pelajaran_id === filterMapel).length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center text-gray-400">
+          <div className="text-5xl mb-3">📭</div>
+          <p className="font-semibold">Tidak ada ujian aktif saat ini</p>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {ujianList
+            .filter(u => !filterMapel || u.mata_pelajaran_id === filterMapel)
+            .map(u => (
+            <div key={u.id} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between mb-3">
+                <h3 className="font-bold text-gray-900 text-sm leading-tight flex-1 pr-2">{u.judul}</h3>
+                <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full shrink-0">Aktif</span>
+              </div>
+              <div className="space-y-1.5 mb-4 text-xs text-gray-500">
+                <div>📚 {u.mata_pelajaran?.nama || '—'}</div>
+                <div>⏱ {u.durasi_menit} menit • {u.jumlah_soal} soal</div>
+                <div>🎯 Nilai minimum: {u.passing_grade}</div>
+              </div>
+
+              {/* Input Token jika ujian memakai token */}
+              {u.token_ujian && (
+                <div className="mb-3">
+                  <input
+                    type="text"
+                    value={tokenInput[u.id] || ''}
+                    onChange={e => {
+                      setTokenInput(prev => ({ ...prev, [u.id]: e.target.value.toUpperCase() }));
+                      setTokenError(prev => ({ ...prev, [u.id]: '' }));
+                    }}
+                    placeholder="Masukkan token ujian"
+                    maxLength={10}
+                    className={`w-full px-3 py-2 border rounded-lg text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      tokenError[u.id] ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                    }`}
+                  />
+                  {tokenError[u.id] && (
+                    <p className="text-red-500 text-xs mt-1">{tokenError[u.id]}</p>
+                  )}
+                </div>
+              )}
+
+              <button
+                onClick={() => startExam(u)}
+                className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-lg transition-colors"
+              >
+                {u.token_ujian ? '🔑 Masuk dengan Token →' : 'Mulai Ujian →'}
+              </button>
             </div>
-          </div>
-        </Modal>
+          ))}
+        </div>
       )}
     </AppLayout>
   );
