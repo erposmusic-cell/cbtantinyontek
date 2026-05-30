@@ -23,7 +23,7 @@ export function useAntiCheat({ enabled, config, sesiId, siswaId, ujianId, onViol
         ujian_id: ujianId,
         tipe_pelanggaran: tipe,
         deskripsi,
-        tingkat_keparahan: tingkat,
+        severity: tingkat,
         timestamp: v.timestamp,
       });
 
