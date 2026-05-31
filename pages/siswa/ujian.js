@@ -54,6 +54,7 @@ export default function SiswaUjianPage() {
   const [filterMapel, setFilterMapel] = useState('');
   const [tokenInput, setTokenInput]   = useState({});
   const [tokenError, setTokenError]   = useState({});
+  const [sesiMap,    setSesiMap]       = useState({}); // ujian_id -> sesi status
   const [examState, setExamState]     = useState(null);
   const [examResult, setExamResult]   = useState(null);
   const [loadingData, setLoadingData] = useState(true);
@@ -107,6 +108,20 @@ export default function SiswaUjianPage() {
     });
 
     setUjianList(ujianTersedia);
+
+    // Fetch status sesi siswa untuk semua ujian tersedia sekaligus
+    if (ujianTersedia.length > 0) {
+      const ids = ujianTersedia.map(u => u.id);
+      const { data: sesiData } = await supabase
+        .from('sesi_ujian')
+        .select('ujian_id, status, alasan_kunci')
+        .eq('siswa_id', user.id)
+        .in('ujian_id', ids);
+      const map = {};
+      (sesiData || []).forEach(s => { map[s.ujian_id] = s; });
+      setSesiMap(map);
+    }
+
     setLoadingData(false);
   }
 
@@ -316,46 +331,89 @@ export default function SiswaUjianPage() {
           {ujianList
             .filter(u => !filterMapel || u.mata_pelajaran_id === filterMapel)
             .map(u => (
-            <div key={u.id} className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="font-bold text-gray-900 text-sm leading-tight flex-1 pr-2">{u.judul}</h3>
-                <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full shrink-0">Aktif</span>
-              </div>
-              <div className="space-y-1.5 mb-4 text-xs text-gray-500">
-                <div>📚 {u.mata_pelajaran?.nama || '—'}</div>
-                <div>⏱ {u.durasi_menit} menit • {u.jumlah_soal} soal</div>
-                <div>🎯 Nilai minimum: {u.passing_grade}</div>
-              </div>
+            {(() => {
+              const sesi = sesiMap[u.id];
+              const isDiskualifikasi = sesi?.status === 'diskualifikasi';
+              const isSelesai        = sesi?.status === 'selesai';
 
-              {/* Input Token jika ujian memakai token */}
-              {u.token_ujian && (
-                <div className="mb-3">
-                  <input
-                    type="text"
-                    value={tokenInput[u.id] || ''}
-                    onChange={e => {
-                      setTokenInput(prev => ({ ...prev, [u.id]: e.target.value.toUpperCase() }));
-                      setTokenError(prev => ({ ...prev, [u.id]: '' }));
-                    }}
-                    placeholder="Masukkan token ujian"
-                    maxLength={10}
-                    className={`w-full px-3 py-2 border rounded-lg text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                      tokenError[u.id] ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                    }`}
-                  />
-                  {tokenError[u.id] && (
-                    <p className="text-red-500 text-xs mt-1">{tokenError[u.id]}</p>
+              return (
+                <div key={u.id} className={`bg-white rounded-xl border p-5 shadow-sm transition-shadow
+                  ${isDiskualifikasi ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:shadow-md'}`}>
+
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="font-bold text-gray-900 text-sm leading-tight flex-1 pr-2">{u.judul}</h3>
+                    {isDiskualifikasi
+                      ? <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full shrink-0">🔒 Dikunci</span>
+                      : isSelesai
+                        ? <span className="bg-gray-100 text-gray-600 text-xs font-semibold px-2 py-0.5 rounded-full shrink-0">✅ Selesai</span>
+                        : <span className="bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full shrink-0">Aktif</span>
+                    }
+                  </div>
+
+                  <div className="space-y-1.5 mb-4 text-xs text-gray-500">
+                    <div>📚 {u.mata_pelajaran?.nama || '—'}</div>
+                    <div>⏱ {u.durasi_menit} menit • {u.jumlah_soal} soal</div>
+                    <div>🎯 Nilai minimum: {u.passing_grade}</div>
+                  </div>
+
+                  {/* Banner diskualifikasi */}
+                  {isDiskualifikasi && (
+                    <div className="flex items-start gap-2 bg-red-100 border border-red-200 rounded-lg px-3 py-2 mb-3 text-xs text-red-700">
+                      <span className="shrink-0 text-base">🔒</span>
+                      <div>
+                        <p className="font-bold">Ujian Anda telah dikunci</p>
+                        <p className="text-red-500 mt-0.5">{sesi?.alasan_kunci || 'Pelanggaran melebihi batas yang ditentukan'}</p>
+                        <p className="mt-1 text-red-400">Hubungi pengawas ujian.</p>
+                      </div>
+                    </div>
                   )}
-                </div>
-              )}
 
-              <button
-                onClick={() => startExam(u)}
-                className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-lg transition-colors"
-              >
-                {u.token_ujian ? '🔑 Masuk dengan Token →' : 'Mulai Ujian →'}
-              </button>
-            </div>
+                  {/* Banner selesai */}
+                  {isSelesai && (
+                    <div className="flex items-center gap-2 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 mb-3 text-xs text-gray-600">
+                      ✅ Anda sudah mengerjakan ujian ini.
+                    </div>
+                  )}
+
+                  {/* Input Token — hanya jika belum selesai/dikunci */}
+                  {!isDiskualifikasi && !isSelesai && u.token_ujian && (
+                    <div className="mb-3">
+                      <input
+                        type="text"
+                        value={tokenInput[u.id] || ''}
+                        onChange={e => {
+                          setTokenInput(prev => ({ ...prev, [u.id]: e.target.value.toUpperCase() }));
+                          setTokenError(prev => ({ ...prev, [u.id]: '' }));
+                        }}
+                        placeholder="Masukkan token ujian"
+                        maxLength={10}
+                        className={`w-full px-3 py-2 border rounded-lg text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          tokenError[u.id] ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                        }`}
+                      />
+                      {tokenError[u.id] && (
+                        <p className="text-red-500 text-xs mt-1">{tokenError[u.id]}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tombol — disable jika selesai atau dikunci */}
+                  <button
+                    onClick={() => !isDiskualifikasi && !isSelesai && startExam(u)}
+                    disabled={isDiskualifikasi || isSelesai}
+                    className={`w-full py-2.5 text-sm font-bold rounded-lg transition-colors
+                      ${isDiskualifikasi
+                        ? 'bg-red-200 text-red-400 cursor-not-allowed'
+                        : isSelesai
+                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          : 'bg-primary-600 hover:bg-primary-700 text-white'
+                      }`}
+                  >
+                    {isDiskualifikasi ? '🔒 Ujian Dikunci' : isSelesai ? '✅ Sudah Dikerjakan' : u.token_ujian ? '🔑 Masuk dengan Token →' : 'Mulai Ujian →'}
+                  </button>
+                </div>
+              );
+            })()}
           ))}
         </div>
       )}
