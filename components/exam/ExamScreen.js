@@ -369,11 +369,11 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         {/* Sidebar navigasi soal */}
-        <div className="w-48 bg-slate-800 border-r border-slate-700 p-4 overflow-y-auto shrink-0">
+        <div className="md:w-48 bg-slate-800 border-b md:border-b-0 md:border-r border-slate-700 p-3 md:p-4 md:overflow-y-auto shrink-0">
           <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3">Navigasi Soal</p>
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-8 md:grid-cols-4 gap-1.5">
             {soalList.map((s, i) => {
               let cls = 'w-8 h-8 rounded-lg text-xs font-bold cursor-pointer transition-all border-2 flex items-center justify-center ';
               if (i === currentIdx) cls += 'bg-blue-600 text-white border-blue-700';
@@ -387,7 +387,7 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
               );
             })}
           </div>
-          <div className="mt-5 space-y-1.5 text-xs text-slate-500">
+          <div className="hidden md:block mt-5 space-y-1.5 text-xs text-slate-500">
             {[['bg-green-600','Sudah dijawab'],['bg-amber-500','Ditandai'],['bg-slate-600','Belum']].map(([bg, label]) => (
               <div key={label} className="flex items-center gap-2">
                 <span className={`w-2.5 h-2.5 rounded-sm ${bg}`} />
@@ -397,15 +397,15 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
           </div>
           <button
             onClick={() => setShowSubmitConfirm(true)}
-            className="w-full mt-6 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors"
+            className="hidden md:block w-full mt-6 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors"
           >
             ✔ Submit Ujian
           </button>
         </div>
 
         {/* Area soal */}
-        <div className="flex-1 p-6 overflow-y-auto">
-          <div className="max-w-3xl mx-auto bg-slate-800 rounded-2xl p-7 border border-slate-700 animate-fade-in" key={soal.id}>
+        <div className="flex-1 p-3 md:p-6 overflow-y-auto">
+          <div className="max-w-3xl mx-auto bg-slate-800 rounded-2xl p-4 md:p-7 border border-slate-700 animate-fade-in" key={soal.id}>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">
                 Soal {currentIdx + 1} dari {totalSoal}
@@ -424,6 +424,14 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
             {soal.tipe_soal === 'mcma'          && <SoalMCMA soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
             {soal.tipe_soal === 'benar_salah'   && <SoalBS soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
             {soal.tipe_soal === 'essay'         && <SoalEssay jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+
+            {/* Submit mobile */}
+            <button
+              onClick={() => setShowSubmitConfirm(true)}
+              className="md:hidden w-full mt-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors"
+            >
+              ✔ Submit Ujian
+            </button>
 
             {/* Navigasi */}
             <div className="flex items-center justify-between mt-8 pt-5 border-t border-slate-700">
