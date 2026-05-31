@@ -432,15 +432,19 @@ export default function MonitoringPage() {
                               }
                             </td>
                             <td className="px-3 py-3 min-w-[120px]">
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 bg-gray-200 rounded-full h-1.5">
-                                  <div
-                                    className="bg-blue-500 h-1.5 rounded-full transition-all"
-                                    style={{ width: `${pct}%` }}
-                                  />
+                              {sesi.status === 'belum_mulai' ? (
+                                <span className="text-gray-300 text-xs">–</span>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                                    <div
+                                      className="bg-blue-500 h-1.5 rounded-full transition-all"
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs text-gray-500 whitespace-nowrap">{dijawab}/{total}</span>
                                 </div>
-                                <span className="text-xs text-gray-500 whitespace-nowrap">{dijawab}/{total}</span>
-                              </div>
+                              )}
                             </td>
                             <td className="px-3 py-3">
                               {sesi.jumlah_pelanggaran > 0 ? (
@@ -456,7 +460,7 @@ export default function MonitoringPage() {
                               )}
                             </td>
                             <td className="px-3 py-3">
-                              {sesi.nilai_akhir != null ? (
+                              {sesi.status !== 'belum_mulai' && sesi.nilai_akhir != null ? (
                                 <span className={`font-bold ${
                                   sesi.nilai_akhir >= (selectedUjian.passing_grade || 75)
                                     ? 'text-green-600'
