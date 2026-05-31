@@ -222,11 +222,25 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
     if (ujian.deteksi_wajah && v.tipe?.toLowerCase().includes('wajah')) captureWajah(v.tipe);
   }, [captureWajah, ujian.deteksi_wajah]);
 
-  const handleLock = useCallback((reason) => {
+  const handleLock = useCallback(async (reason) => {
     setLocked(true);
     setLockReason(reason);
     streamRef.current?.getTracks().forEach(t => t.stop());
-  }, []);
+
+    // FIX BUG DISKUALIFIKASI: Simpan status diskualifikasi ke DB agar
+    // tidak bisa masuk kembali meski refresh atau buka tab baru.
+    if (sesiId) {
+      try {
+        await supabase.from('sesi_ujian').update({
+          status: 'diskualifikasi',
+          waktu_selesai: new Date().toISOString(),
+          alasan_kunci: reason,
+        }).eq('id', sesiId);
+      } catch (e) {
+        console.error('[handleLock] Gagal update sesi ke diskualifikasi:', e);
+      }
+    }
+  }, [sesiId]);
 
   useAntiCheat({
     enabled: !locked,
@@ -323,6 +337,18 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
         <div className="mt-6 bg-white/20 rounded-xl px-8 py-4 text-5xl font-extrabold">{violations.length}</div>
         <p className="mt-2 opacity-80 text-sm">Total Pelanggaran</p>
         <p className="mt-6 text-sm opacity-70">Hubungi pengawas ujian untuk bantuan.</p>
+        {/* FIX: Simpan jawaban yang sudah ada saat dikunci/diskualifikasi */}
+        {!submitting && (
+          <button
+            onClick={async () => {
+              setSubmitting(true);
+              await onFinish({ jawaban, violations, totalSoal, answered, unanswered, locked: true });
+            }}
+            className="mt-6 px-6 py-3 bg-white/20 hover:bg-white/30 text-white text-sm font-bold rounded-xl transition-colors border border-white/40"
+          >
+            {submitting ? 'Menyimpan...' : '💾 Simpan Jawaban & Keluar'}
+          </button>
+        )}
       </div>
     );
   }
