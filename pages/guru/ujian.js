@@ -54,6 +54,8 @@ const FORM_DEFAULT = {
   blokir_copy_paste: true, deteksi_wajah: false, batas_pelanggaran: 3,
   kunci_browser: true, watermark_nama: true, rekam_aktivitas: true,
   token_ujian: '',
+  keluar_browser: 'lanjut', // 'kunci' | 'lanjut' | 'reconnect'
+  batas_reconnect_menit: 5,
 };
 
 export default function KelolaUjianPage() {
@@ -140,6 +142,8 @@ export default function KelolaUjianPage() {
       kunci_browser: u.kunci_browser, watermark_nama: u.watermark_nama,
       rekam_aktivitas: u.rekam_aktivitas,
       token_ujian: u.token_ujian || '',
+      keluar_browser: u.keluar_browser || 'lanjut',
+      batas_reconnect_menit: u.batas_reconnect_menit || 5,
     });
     const { data: existingSoal } = await supabase
       .from('soal_ujian').select('soal_id').eq('ujian_id', u.id).order('urutan');
@@ -462,6 +466,39 @@ export default function KelolaUjianPage() {
                 <input type="number" min={1} max={10} value={form.batas_pelanggaran} onChange={e => setF('batas_pelanggaran', +e.target.value)}
                   className="w-32 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
+            </div>
+
+            {/* Pengaturan Keluar Browser */}
+            <div className="border-t border-gray-100 pt-4">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">🚪 Saat Siswa Keluar Browser</p>
+              <div className="space-y-2">
+                {[
+                  { val: 'lanjut',    icon: '▶️', label: 'Bisa lanjut', desc: 'Siswa bisa masuk kembali dan melanjutkan ujian' },
+                  { val: 'kunci',     icon: '🔒', label: 'Langsung dikunci', desc: 'Sesi dikunci permanen, siswa tidak bisa masuk lagi' },
+                  { val: 'reconnect', icon: '⏱', label: 'Batas waktu reconnect', desc: 'Siswa punya waktu terbatas untuk masuk kembali' },
+                ].map(opt => (
+                  <label key={opt.val} className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                    form.keluar_browser === opt.val ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                  }`}>
+                    <input type="radio" name="keluar_browser" value={opt.val}
+                      checked={form.keluar_browser === opt.val}
+                      onChange={() => setF('keluar_browser', opt.val)}
+                      className="mt-0.5 accent-blue-600" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{opt.icon} {opt.label}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {form.keluar_browser === 'reconnect' && (
+                <div className="mt-3">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">Batas waktu reconnect (menit)</label>
+                  <input type="number" min={1} max={30} value={form.batas_reconnect_menit}
+                    onChange={e => setF('batas_reconnect_menit', +e.target.value)}
+                    className="w-32 px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              )}
             </div>
 
             {/* Pilih Soal */}
