@@ -129,15 +129,20 @@ export default function NilaiPage() {
       .order('nilai_akhir', { ascending: false });
     setSesiList(sesi || []);
 
-    // 2. Jawaban essay yang belum dikoreksi
-    const { data: essay } = await supabase
-      .from('jawaban_siswa')
-      .select('id, jawaban_essay, nilai_guru, catatan_guru, sudah_dikoreksi, sesi_id, bank_soal(pertanyaan, bobot, kunci_jawaban), sesi_ujian(profiles(nama_lengkap))')
-      .eq('sesi_ujian.ujian_id', ujian.id)
-      .eq('bank_soal.tipe_soal', 'essay')
-      .not('jawaban_essay', 'is', null)
-      .order('sudah_dikoreksi', { ascending: true });
-    setEssayList(essay || []);
+    // 2. Jawaban essay — filter lewat sesi_id list (tidak bisa filter foreign table di PostgREST)
+    const sesiIds = (sesi || []).map(s => s.id);
+    let essayData = [];
+    if (sesiIds.length > 0) {
+      const { data: essay } = await supabase
+        .from('jawaban_siswa')
+        .select('id, jawaban_essay, nilai_guru, catatan_guru, sudah_dikoreksi, sesi_id, bank_soal(pertanyaan, bobot, kunci_jawaban, tipe_soal), sesi_ujian(profiles(nama_lengkap))')
+        .in('sesi_id', sesiIds)
+        .not('jawaban_essay', 'is', null)
+        .order('sudah_dikoreksi', { ascending: true });
+      // Filter essay saja di client (tipe_soal sudah ada di select)
+      essayData = (essay || []).filter(e => e.bank_soal?.tipe_soal === 'essay');
+    }
+    setEssayList(essayData);
 
     setLoadingData(false);
   }
