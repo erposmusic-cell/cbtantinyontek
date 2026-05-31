@@ -421,8 +421,8 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
             <p className="text-slate-100 text-base leading-relaxed mb-6">{soal.pertanyaan}</p>
 
             {soal.tipe_soal === 'pilihan_ganda' && <SoalPG soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
-            {soal.tipe_soal === 'mcma'          && <SoalMCMA soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
-            {soal.tipe_soal === 'benar_salah'   && <SoalBS soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'mcma'          && <SoalMCMA soal={soal} jawaban={Array.isArray(jawaban[soal.id]) ? jawaban[soal.id] : []} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'benar_salah'   && <SoalBS soal={soal} jawaban={Array.isArray(jawaban[soal.id]) ? jawaban[soal.id] : []} onJawab={setJawabanSoal} />}
             {soal.tipe_soal === 'essay'         && <SoalEssay jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
 
             {/* Submit mobile */}
