@@ -412,7 +412,6 @@ export default function SiswaUjianPage() {
                 </div>
               );
             })}
-          ))}
         </div>
       )}
     </AppLayout>
