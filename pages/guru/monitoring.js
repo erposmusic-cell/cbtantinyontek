@@ -492,7 +492,7 @@ export default function MonitoringPage() {
                                     {locking === sesi.id ? '...' : '♻️ Pulihkan'}
                                   </button>
                                 )}
-                                {sesi.status === 'selesai' && (
+                                {(sesi.status === 'selesai' || sesi.status === 'diskualifikasi') && (
                                   <button
                                     onClick={() => {
                                       if (confirm(`Reset ujian ${sesi.profiles?.nama_lengkap || 'siswa ini'}? Jawaban lama akan dihapus.`)) {
