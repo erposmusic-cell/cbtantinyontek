@@ -133,6 +133,11 @@ export default function SiswaUjianPage() {
       return;
     }
 
+    if (sesiExisting?.status === 'diskualifikasi') {
+      alert('Ujian kamu telah dikunci karena pelanggaran. Hubungi pengawas ujian.');
+      return;
+    }
+
     // Ambil soal ujian
     const { data: soalUjian } = await supabase
       .from('soal_ujian')
