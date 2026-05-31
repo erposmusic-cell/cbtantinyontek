@@ -151,10 +151,14 @@ export default function SiswaUjianPage() {
       : soal;
 
     // Acak pilihan jawaban jika acak_pilihan aktif
+    // Label A/B/C/D di-reassign ulang setelah shuffle agar tetap berurutan
+    const LABELS = ['A', 'B', 'C', 'D', 'E'];
     const finalSoal = ujian.acak_pilihan
       ? acakSoal.map(s => ({
           ...s,
-          pilihan: [...(s.pilihan || [])].sort(() => Math.random() - 0.5),
+          pilihan: [...(s.pilihan || [])]
+            .sort(() => Math.random() - 0.5)
+            .map((p, i) => ({ ...p, label: LABELS[i] ?? String(i + 1) })),
         }))
       : acakSoal;
 
