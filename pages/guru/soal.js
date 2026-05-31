@@ -116,6 +116,7 @@ export default function SoalPage() {
 
   async function handleSave() {
     if (!form.pertanyaan.trim()) { setError('Pertanyaan wajib diisi'); return; }
+    if (!form.mata_pelajaran_id) { setError('Mata pelajaran wajib dipilih'); return; }
     if (['pilihan_ganda','mcma'].includes(form.tipe_soal)) {
       if (pilihan.some(p => !p.teks.trim())) { setError('Semua pilihan jawaban wajib diisi'); return; }
       if (!pilihan.some(p => p.adalah_benar)) { setError('Minimal 1 pilihan harus ditandai benar'); return; }
