@@ -17,10 +17,22 @@ export default function LaporanPage() {
   const [generating,  setGenerating]  = useState(false);
   const [notifStatus, setNotifStatus] = useState(null);
   const [sending,     setSending]     = useState(false);
+  const [namaSekolah, setNamaSekolah] = useState('');
 
   useEffect(() => {
     if (!loading && !user) router.push('/');
   }, [user, loading]);
+
+  useEffect(() => {
+    // Load nama sekolah dari localStorage
+    const saved = localStorage.getItem('app_nama_sekolah');
+    if (saved) setNamaSekolah(saved);
+  }, []);
+
+  function handleSaveNamaSekolah(val) {
+    setNamaSekolah(val);
+    localStorage.setItem('app_nama_sekolah', val);
+  }
 
   useEffect(() => {
     if (user) loadUjian();
@@ -91,7 +103,7 @@ export default function LaporanPage() {
     setGenerating(true);
     try {
       await generateLaporanPDF({
-        namaSekolah:    'Nama Sekolah Anda',
+        namaSekolah:    namaSekolah || 'Nama Sekolah',
         namaUjian:      laporanData.ujian.judul,
         mataPelajaran:  laporanData.ujian.mata_pelajaran?.nama || '-',
         tanggal:        new Date(laporanData.ujian.waktu_mulai).toLocaleDateString('id-ID'),
@@ -113,7 +125,7 @@ export default function LaporanPage() {
     setNotifStatus(null);
 
     const results = await kirimNotifikasiBulk(laporanData.siswaList, {
-      namaSekolah:  'Nama Sekolah Anda',
+      namaSekolah:  namaSekolah || 'Nama Sekolah',
       namaUjian:    laporanData.ujian.judul,
       passingGrade: laporanData.ujian.passing_grade,
       namaGuru:     user?.nama_lengkap || 'Guru',
@@ -156,6 +168,21 @@ export default function LaporanPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-extrabold text-gray-900">📊 Laporan Ujian</h1>
         <p className="text-gray-500 text-sm mt-1">Lihat statistik, export PDF, dan kirim notifikasi orang tua</p>
+      </div>
+
+      {/* Input Nama Sekolah */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-5 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <label className="text-sm font-bold text-gray-700 shrink-0">🏫 Nama Sekolah:</label>
+        <input
+          type="text"
+          value={namaSekolah}
+          onChange={e => handleSaveNamaSekolah(e.target.value)}
+          placeholder="Masukkan nama sekolah (untuk PDF & notif WA)"
+          className="flex-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        {namaSekolah && (
+          <span className="text-xs text-green-600 font-semibold shrink-0">✅ Tersimpan</span>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
@@ -294,7 +321,7 @@ export default function LaporanPage() {
                             <td className="px-4 py-3">
                               {s.nomorHPOrtu ? (
                                 <a
-                                  href={`https://wa.me/${s.nomorHPOrtu.replace(/\D/g,'').replace(/^0/,'62')}?text=${encodeURIComponent(buildPesanHasilUjian({ namaSekolah:'Sekolah', namaSiswa:s.nama, namaUjian:laporanData.ujian.judul, nilai:s.nilai, passingGrade:laporanData.ujian.passing_grade, jumlahPelanggaran:s.jumlahPelanggaran, namaGuru:user?.nama_lengkap||'Guru' }))}`}
+                                  href={`https://wa.me/${s.nomorHPOrtu.replace(/\D/g,'').replace(/^0/,'62')}?text=${encodeURIComponent(buildPesanHasilUjian({ namaSekolah:namaSekolah||'Sekolah', namaSiswa:s.nama, namaUjian:laporanData.ujian.judul, nilai:s.nilai, passingGrade:laporanData.ujian.passing_grade, jumlahPelanggaran:s.jumlahPelanggaran, namaGuru:user?.nama_lengkap||'Guru' }))}`}
                                   target="_blank" rel="noopener noreferrer"
                                   className="text-green-600 hover:text-green-800 text-xs font-semibold"
                                 >
