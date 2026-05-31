@@ -66,14 +66,35 @@ export function useAntiCheat({ enabled, config, sesiId, siswaId, ujianId, onViol
         if (document.hidden)
           reportViolation('pindah_tab', 'Siswa berpindah ke tab atau aplikasi lain', 'tinggi');
       };
-      const onBlur = () =>
-        reportViolation('blur_window', 'Jendela browser kehilangan fokus', 'sedang');
+
+      // Grace period 600ms — dialog sistem native (kamera, notifikasi, print)
+      // menyebabkan blur sesaat lalu langsung focus kembali.
+      // Jika focus kembali sebelum timer habis, pelanggaran dibatalkan.
+      let blurTimer = null;
+      const onBlur = () => {
+        blurTimer = setTimeout(() => {
+          // Cek lagi: jika tab masih visible tapi window blur, baru catat
+          if (!document.hidden) {
+            reportViolation('blur_window', 'Jendela browser kehilangan fokus', 'sedang');
+          }
+          blurTimer = null;
+        }, 600);
+      };
+      const onFocus = () => {
+        if (blurTimer) {
+          clearTimeout(blurTimer);
+          blurTimer = null;
+        }
+      };
 
       document.addEventListener('visibilitychange', onVisChange);
       window.addEventListener('blur', onBlur);
+      window.addEventListener('focus', onFocus);
       cleanup.push(() => {
         document.removeEventListener('visibilitychange', onVisChange);
         window.removeEventListener('blur', onBlur);
+        window.removeEventListener('focus', onFocus);
+        if (blurTimer) clearTimeout(blurTimer);
       });
     }
 
