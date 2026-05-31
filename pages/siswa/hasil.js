@@ -19,11 +19,12 @@ export default function HasilUjianPage() {
   }, [user]);
 
   async function loadHasil() {
+    // Ambil semua sesi: selesai DAN diskualifikasi
     const { data } = await supabase
       .from('sesi_ujian')
-      .select('*, ujian(judul, passing_grade, mata_pelajaran(nama))')
+      .select('*, ujian(judul, passing_grade, tampilkan_nilai, mata_pelajaran(nama))')
       .eq('siswa_id', user?.id)
-      .eq('status', 'selesai')
+      .in('status', ['selesai', 'diskualifikasi'])
       .order('waktu_selesai', { ascending: false });
     setHasilList(data || []);
     setLoadingData(false);
@@ -49,45 +50,127 @@ export default function HasilUjianPage() {
           <p className="font-semibold">Belum ada riwayat ujian</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  {['Ujian','Mata Pelajaran','Nilai','Status','Pelanggaran','Waktu'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {hasilList.map(h => {
-                  const lulus = h.nilai_akhir >= h.ujian?.passing_grade;
-                  return (
-                    <tr key={h.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">{h.ujian?.judul}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500">{h.ujian?.mata_pelajaran?.nama || '—'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-lg font-extrabold ${lulus ? 'text-green-600' : 'text-red-600'}`}>
-                          {h.nilai_akhir ?? '—'}
+        <>
+          {/* Mobile: card view */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {hasilList.map(h => {
+              const isDiskualifikasi = h.status === 'diskualifikasi';
+              const lulus = !isDiskualifikasi && h.nilai_akhir >= h.ujian?.passing_grade;
+              const tampilNilai = h.ujian?.tampilkan_nilai !== false;
+              return (
+                <div key={h.id} className={`bg-white rounded-xl border shadow-sm p-4
+                  ${isDiskualifikasi ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
+
+                  {/* Status diskualifikasi banner */}
+                  {isDiskualifikasi && (
+                    <div className="flex items-center gap-2 bg-red-100 border border-red-300 rounded-lg px-3 py-2 mb-3">
+                      <span className="text-lg">🔒</span>
+                      <div>
+                        <p className="text-red-700 font-bold text-sm">Ujian Dikunci</p>
+                        <p className="text-red-500 text-xs">
+                          {h.alasan_kunci || 'Pelanggaran melebihi batas'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="font-bold text-gray-900 text-sm">{h.ujian?.judul}</p>
+                  <p className="text-xs text-gray-400 mb-3">{h.ujian?.mata_pelajaran?.nama || '—'}</p>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      {isDiskualifikasi ? (
+                        <span className="inline-flex text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700">
+                          🔒 Diskualifikasi
                         </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex text-xs font-semibold px-2.5 py-0.5 rounded-full
+                      ) : (
+                        <span className={`inline-flex text-xs font-bold px-2.5 py-1 rounded-full
                           ${lulus ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                           {lulus ? '✅ Lulus' : '❌ Tidak Lulus'}
                         </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">{h.jumlah_pelanggaran ?? 0}x</td>
-                      <td className="px-4 py-3 text-xs text-gray-400">
-                        {h.waktu_selesai ? new Date(h.waktu_selesai).toLocaleString('id-ID') : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      )}
+                    </div>
+                    {!isDiskualifikasi && tampilNilai && (
+                      <span className={`text-2xl font-extrabold ${lulus ? 'text-green-600' : 'text-red-600'}`}>
+                        {h.nilai_akhir ?? '—'}
+                      </span>
+                    )}
+                    {!isDiskualifikasi && !tampilNilai && (
+                      <span className="text-sm text-gray-400 italic">Nilai disembunyikan</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between mt-2 text-xs text-gray-400">
+                    <span>⚠️ {h.jumlah_pelanggaran ?? 0}x pelanggaran</span>
+                    <span>{h.waktu_selesai ? new Date(h.waktu_selesai).toLocaleString('id-ID') : '—'}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        </div>
+
+          {/* Desktop: table view */}
+          <div className="hidden md:block bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    {['Ujian','Mata Pelajaran','Nilai','Status','Pelanggaran','Waktu'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-500">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {hasilList.map(h => {
+                    const isDiskualifikasi = h.status === 'diskualifikasi';
+                    const lulus = !isDiskualifikasi && h.nilai_akhir >= h.ujian?.passing_grade;
+                    const tampilNilai = h.ujian?.tampilkan_nilai !== false;
+                    return (
+                      <tr key={h.id} className={isDiskualifikasi ? 'bg-red-50' : 'hover:bg-gray-50'}>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                          {h.ujian?.judul}
+                          {isDiskualifikasi && (
+                            <p className="text-xs text-red-500 mt-0.5 font-normal">
+                              {h.alasan_kunci || 'Pelanggaran melebihi batas'}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{h.ujian?.mata_pelajaran?.nama || '—'}</td>
+                        <td className="px-4 py-3">
+                          {isDiskualifikasi ? (
+                            <span className="text-sm text-red-400 font-semibold">—</span>
+                          ) : tampilNilai ? (
+                            <span className={`text-lg font-extrabold ${lulus ? 'text-green-600' : 'text-red-600'}`}>
+                              {h.nilai_akhir ?? '—'}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-400 italic">Disembunyikan</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isDiskualifikasi ? (
+                            <span className="inline-flex text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700">
+                              🔒 Diskualifikasi
+                            </span>
+                          ) : (
+                            <span className={`inline-flex text-xs font-semibold px-2.5 py-0.5 rounded-full
+                              ${lulus ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {lulus ? '✅ Lulus' : '❌ Tidak Lulus'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">{h.jumlah_pelanggaran ?? 0}x</td>
+                        <td className="px-4 py-3 text-xs text-gray-400">
+                          {h.waktu_selesai ? new Date(h.waktu_selesai).toLocaleString('id-ID') : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
     </AppLayout>
   );
