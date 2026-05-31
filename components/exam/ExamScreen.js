@@ -4,16 +4,6 @@ import { useFaceRecognition } from '../../hooks/useFaceRecognition';
 import { useScreenRecorder } from '../../hooks/useScreenRecorder';
 import { supabase } from '../../lib/supabase';
 
-// ── Render Soal (dispatch by tipe) ──────────────────────────
-function RenderSoal({ tipe, soal, jawaban, onJawab }) {
-  const t = (tipe || '').trim().toLowerCase();
-  if (t === 'pilihan_ganda') return <SoalPG soal={soal} jawaban={jawaban} onJawab={onJawab} />;
-  if (t === 'mcma')          return <SoalMCMA soal={soal} jawaban={Array.isArray(jawaban) ? jawaban : []} onJawab={onJawab} />;
-  if (t === 'benar_salah')   return <SoalBS soal={soal} jawaban={Array.isArray(jawaban) ? jawaban : []} onJawab={onJawab} />;
-  if (t === 'essay')         return <SoalEssay jawaban={jawaban} onJawab={onJawab} />;
-  return <div style={{color:'#f87171',fontSize:'13px',padding:'12px',border:'1px solid #7f1d1d',borderRadius:'8px'}}>Tipe tidak dikenal: "{tipe}"</div>;
-}
-
 // ── Timer ────────────────────────────────────────────────────
 function ExamTimer({ durasiMenit, onTimeout }) {
   const [timeLeft, setTimeLeft] = useState(durasiMenit * 60);
@@ -90,9 +80,8 @@ function SoalPG({ soal, jawaban, onJawab }) {
 
 // ── Soal MCMA ────────────────────────────────────────────────
 function SoalMCMA({ soal, jawaban = [], onJawab }) {
-  const toggle = (e, id) => {
-    e.stopPropagation();
-    const curr = Array.isArray(jawaban) ? jawaban : [];
+  const toggle = (id) => {
+    const curr = jawaban || [];
     const next = curr.includes(id) ? curr.filter(x => x !== id) : [...curr, id];
     onJawab(next);
   };
@@ -103,23 +92,23 @@ function SoalMCMA({ soal, jawaban = [], onJawab }) {
       </div>
       <div className="space-y-2.5">
         {soal.pilihan.map(p => {
-          const sel = (Array.isArray(jawaban) ? jawaban : []).includes(p.id);
+          const sel = (jawaban || []).includes(p.id);
           return (
             <div
               key={p.id}
-              onClick={(e) => toggle(e, p.id)}
-              className={`flex items-start gap-3 p-3.5 rounded-lg border-2 cursor-pointer transition-all select-none
+              onClick={() => toggle(p.id)}
+              className={`flex items-start gap-3 p-3.5 rounded-lg border-2 cursor-pointer transition-all
                 ${sel
                   ? 'border-blue-500 bg-blue-900/30 text-blue-200'
                   : 'border-slate-600 bg-slate-900/60 text-slate-300 hover:border-slate-500 hover:bg-slate-800'
                 }`}
             >
-              <span className={`min-w-[24px] h-6 rounded flex items-center justify-center text-xs font-bold shrink-0 pointer-events-none
+              <span className={`min-w-[24px] h-6 rounded flex items-center justify-center text-xs font-bold shrink-0
                 ${sel ? 'bg-blue-600 text-white' : 'bg-slate-600 text-slate-300'}`}>
                 {p.label}
               </span>
-              <span className="flex-1 text-sm pointer-events-none">{p.teks}</span>
-              {sel && <span className="text-blue-400 pointer-events-none">☑</span>}
+              <span className="flex-1 text-sm">{p.teks}</span>
+              {sel && <span className="text-blue-400">☑</span>}
             </div>
           );
         })}
@@ -130,41 +119,32 @@ function SoalMCMA({ soal, jawaban = [], onJawab }) {
 
 // ── Soal Benar/Salah ─────────────────────────────────────────
 function SoalBS({ soal, jawaban = [], onJawab }) {
-  const pilihanBS = soal.pilihan.slice(0, 5);
-
   const set = (idx, val) => {
-    // Selalu buat array sepanjang jumlah pernyataan,
-    // isi dari jawaban sebelumnya agar pernyataan lain tidak hilang
-    const curr = Array.from({ length: pilihanBS.length }, (_, k) =>
-      jawaban[k] !== undefined ? jawaban[k] : null
-    );
+    const curr = [...(jawaban || [null,null,null,null,null])];
     curr[idx] = val;
     onJawab(curr);
   };
-
   return (
     <div>
       <div className="text-xs text-blue-300 bg-blue-900/30 border border-blue-700 rounded-lg px-3 py-2 mb-3">
         📋 Tentukan BENAR atau SALAH untuk setiap pernyataan
       </div>
       <div className="space-y-2">
-        {pilihanBS.map((p, i) => {
-          const val = jawaban[i];
+        {soal.pilihan.slice(0, 5).map((p, i) => {
+          const val = jawaban?.[i];
           return (
             <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg border border-slate-600 bg-slate-900/60 text-slate-300">
               <span className="text-xs font-bold text-blue-400 w-7 shrink-0">{p.label}</span>
               <span className="flex-1 text-sm">{p.teks}</span>
               <div className="flex gap-1.5 shrink-0">
                 <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); set(i, true); }}
+                  onClick={() => set(i, true)}
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors
                     ${val === true ? 'bg-green-600 text-white' : 'border border-slate-500 text-slate-400 hover:border-green-500'}`}>
                   BENAR
                 </button>
                 <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); set(i, false); }}
+                  onClick={() => set(i, false)}
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors
                     ${val === false ? 'bg-red-600 text-white' : 'border border-slate-500 text-slate-400 hover:border-red-500'}`}>
                   SALAH
@@ -212,43 +192,18 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
-  // ── Screenshot kamera wajah ──
-  const captureWajah = useCallback(async (label = 'wajah') => {
-    const video = videoRef.current;
-    if (!video || video.readyState < 2) return;
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 320;
-      canvas.height = video.videoHeight || 240;
-      canvas.getContext('2d').drawImage(video, 0, 0);
-      canvas.toBlob(async (blob) => {
-        if (!blob) return;
-        const path = `${ujian.id}/${siswa.id}/wajah_${label}_${Date.now()}.jpg`;
-        await supabase.storage.from('screenshot-ujian').upload(path, blob, { contentType: 'image/jpeg', upsert: true });
-        await supabase.from('rekaman_ujian').insert({
-          sesi_id: sesiId, siswa_id: siswa.id, ujian_id: ujian.id,
-          file_path: path, durasi_detik: 0, ukuran_byte: blob.size,
-          dibuat_pada: new Date().toISOString(),
-        });
-      }, 'image/jpeg', 0.75);
-    } catch (e) { console.warn('[SS Wajah]', e); }
-  }, [ujian.id, siswa.id, sesiId]);
-
   const handleViolation = useCallback((v) => {
     setViolations(prev => [...prev, v]);
     setViolationAlert(v);
     setTimeout(() => setViolationAlert(null), 4000);
-    // Capture kamera saat pelanggaran wajah
-    if (ujian.deteksi_wajah && v.tipe?.toLowerCase().includes('wajah')) captureWajah(v.tipe);
-  }, [captureWajah, ujian.deteksi_wajah]);
+  }, []);
 
   const handleLock = useCallback(async (reason) => {
     setLocked(true);
     setLockReason(reason);
     streamRef.current?.getTracks().forEach(t => t.stop());
 
-    // FIX BUG DISKUALIFIKASI: Simpan status diskualifikasi ke DB agar
-    // tidak bisa masuk kembali meski refresh atau buka tab baru.
+    // Simpan status diskualifikasi ke DB agar tidak bisa masuk kembali setelah refresh
     if (sesiId) {
       try {
         await supabase.from('sesi_ujian').update({
@@ -257,7 +212,7 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
           alasan_kunci: reason,
         }).eq('id', sesiId);
       } catch (e) {
-        console.error('[handleLock] Gagal update sesi ke diskualifikasi:', e);
+        console.error('[handleLock] Gagal update sesi:', e);
       }
     }
   }, [sesiId]);
@@ -357,7 +312,6 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
         <div className="mt-6 bg-white/20 rounded-xl px-8 py-4 text-5xl font-extrabold">{violations.length}</div>
         <p className="mt-2 opacity-80 text-sm">Total Pelanggaran</p>
         <p className="mt-6 text-sm opacity-70">Hubungi pengawas ujian untuk bantuan.</p>
-        {/* FIX: Simpan jawaban yang sudah ada saat dikunci/diskualifikasi */}
         {!submitting && (
           <button
             onClick={async () => {
@@ -410,16 +364,24 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
               REC
             </div>
           )}
-
+          {/* FIX BUG #3: Tombol ini memberikan user gesture agar getDisplayMedia() diizinkan browser */}
+          {ujian.rekam_aktivitas && screenRecorder.status === 'idle' && (
+            <button
+              onClick={screenRecorder.startRecording}
+              className="flex items-center gap-1.5 bg-slate-700 border border-slate-500 text-slate-300 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-600 transition-colors"
+            >
+              ⏺ Aktifkan Rekam
+            </button>
+          )}
           <ExamTimer durasiMenit={ujian.durasi_menit} onTimeout={handleSubmit} />
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden">
         {/* Sidebar navigasi soal */}
-        <div className="md:w-48 bg-slate-800 border-b md:border-b-0 md:border-r border-slate-700 p-3 md:p-4 md:overflow-y-auto shrink-0">
+        <div className="w-48 bg-slate-800 border-r border-slate-700 p-4 overflow-y-auto shrink-0">
           <p className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-3">Navigasi Soal</p>
-          <div className="grid grid-cols-8 md:grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-4 gap-1.5">
             {soalList.map((s, i) => {
               let cls = 'w-8 h-8 rounded-lg text-xs font-bold cursor-pointer transition-all border-2 flex items-center justify-center ';
               if (i === currentIdx) cls += 'bg-blue-600 text-white border-blue-700';
@@ -433,7 +395,7 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
               );
             })}
           </div>
-          <div className="hidden md:block mt-5 space-y-1.5 text-xs text-slate-500">
+          <div className="mt-5 space-y-1.5 text-xs text-slate-500">
             {[['bg-green-600','Sudah dijawab'],['bg-amber-500','Ditandai'],['bg-slate-600','Belum']].map(([bg, label]) => (
               <div key={label} className="flex items-center gap-2">
                 <span className={`w-2.5 h-2.5 rounded-sm ${bg}`} />
@@ -443,15 +405,15 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
           </div>
           <button
             onClick={() => setShowSubmitConfirm(true)}
-            className="hidden md:block w-full mt-6 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors"
+            className="w-full mt-6 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors"
           >
             ✔ Submit Ujian
           </button>
         </div>
 
         {/* Area soal */}
-        <div className="flex-1 p-3 md:p-6 overflow-y-auto">
-          <div className="max-w-3xl mx-auto bg-slate-800 rounded-2xl p-4 md:p-7 border border-slate-700 animate-fade-in" key={soal.id}>
+        <div className="flex-1 p-6 overflow-y-auto">
+          <div className="max-w-3xl mx-auto bg-slate-800 rounded-2xl p-7 border border-slate-700 animate-fade-in" key={soal.id}>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">
                 Soal {currentIdx + 1} dari {totalSoal}
@@ -466,15 +428,10 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
             </div>
             <p className="text-slate-100 text-base leading-relaxed mb-6">{soal.pertanyaan}</p>
 
-            <RenderSoal tipe={soal.tipe_soal} soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />
-
-            {/* Submit mobile */}
-            <button
-              onClick={() => setShowSubmitConfirm(true)}
-              className="md:hidden w-full mt-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors"
-            >
-              ✔ Submit Ujian
-            </button>
+            {soal.tipe_soal === 'pilihan_ganda' && <SoalPG soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'mcma'          && <SoalMCMA soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'benar_salah'   && <SoalBS soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {soal.tipe_soal === 'essay'         && <SoalEssay jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
 
             {/* Navigasi */}
             <div className="flex items-center justify-between mt-8 pt-5 border-t border-slate-700">
