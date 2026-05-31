@@ -4,6 +4,20 @@ import AppLayout from '../../components/layout/AppLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 
+// Konversi datetime-local (lokal) ke ISO UTC untuk disimpan ke DB
+function localToUTC(localStr) {
+  if (!localStr) return null;
+  return new Date(localStr).toISOString();
+}
+
+// Konversi ISO UTC dari DB ke format datetime-local (lokal browser)
+function utcToLocal(isoStr) {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const STATUS_COLOR = {
   draft:      'bg-gray-100 text-gray-600',
   aktif:      'bg-green-100 text-green-700',
@@ -115,8 +129,8 @@ export default function KelolaUjianPage() {
     setForm({
       judul: u.judul, deskripsi: u.deskripsi || '', mata_pelajaran_id: u.mata_pelajaran_id || '',
       kelas_target: u.kelas_target || [],
-      waktu_mulai: u.waktu_mulai ? u.waktu_mulai.slice(0, 16) : '',
-      waktu_selesai: u.waktu_selesai ? u.waktu_selesai.slice(0, 16) : '',
+      waktu_mulai: utcToLocal(u.waktu_mulai),
+      waktu_selesai: utcToLocal(u.waktu_selesai),
       durasi_menit: u.durasi_menit, jumlah_soal: u.jumlah_soal,
       acak_soal: u.acak_soal, acak_pilihan: u.acak_pilihan,
       tampilkan_nilai: u.tampilkan_nilai, passing_grade: u.passing_grade,
@@ -149,6 +163,8 @@ export default function KelolaUjianPage() {
     try {
       const payload = {
         ...form,
+        waktu_mulai:  localToUTC(form.waktu_mulai),
+        waktu_selesai: localToUTC(form.waktu_selesai),
         jumlah_soal: selectedSoal.length,
         kelas_target: form.kelas_target.length > 0 ? form.kelas_target : [],
         mata_pelajaran_id: form.mata_pelajaran_id || null,
