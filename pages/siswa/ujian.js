@@ -54,7 +54,6 @@ export default function SiswaUjianPage() {
   const [filterMapel, setFilterMapel] = useState('');
   const [tokenInput, setTokenInput]   = useState({});
   const [tokenError, setTokenError]   = useState({});
-  const [diskualifikasiIds, setDiskualifikasiIds] = useState(new Set());
   const [examState, setExamState]     = useState(null);
   const [examResult, setExamResult]   = useState(null);
   const [loadingData, setLoadingData] = useState(true);
@@ -101,67 +100,18 @@ export default function SiswaUjianPage() {
 
     // Filter: tampilkan ujian jika (a) tidak ada daftar peserta = terbuka untuk semua,
     // atau (b) siswa ini terdaftar dan diizinkan
-    // DAN waktu ujian masih valid (belum mulai atau sedang berlangsung)
-    const now = new Date();
     const ujianTersedia = semuaUjian.filter(u => {
-      // Tampilkan semua ujian aktif — termasuk belum mulai & sudah lewat (dengan keterangan)
       const peserta = pesertaMap[u.id];
-      if (!peserta || peserta.length === 0) return true;
+      if (!peserta || peserta.length === 0) return true; // terbuka
       return peserta.some(p => p.siswa_id === user.id && p.diizinkan);
     });
 
-    // Cek sesi yang sudah diskualifikasi untuk ujian-ujian ini
-    const ujianTersediaIds = ujianTersedia.map(u => u.id);
-    const { data: sesiData } = await supabase
-      .from('sesi_ujian')
-      .select('ujian_id, status')
-      .eq('siswa_id', user.id)
-      .in('ujian_id', ujianTersediaIds);
-
-    const diskualifikasiSet = new Set(
-      (sesiData || [])
-        .filter(s => s.status === 'diskualifikasi')
-        .map(s => s.ujian_id)
-    );
-
-    setDiskualifikasiIds(diskualifikasiSet);
     setUjianList(ujianTersedia);
     setLoadingData(false);
   }
 
   async function startExam(ujian) {
-    // Validasi waktu ujian
-    const now = new Date();
-    if (ujian.waktu_mulai && new Date(ujian.waktu_mulai) > now) {
-      alert('Ujian belum dimulai. Silakan tunggu waktu ujian.');
-      return;
-    }
-    if (ujian.waktu_selesai && new Date(ujian.waktu_selesai) < now) {
-      alert('Waktu ujian sudah berakhir. Anda tidak dapat mengikuti ujian ini.');
-      return;
-    }
-    // Cek status sesi DULU sebelum validasi token
-    const { data: sesiExisting } = await supabase
-      .from('sesi_ujian')
-      .select('id, status')
-      .eq('ujian_id', ujian.id)
-      .eq('siswa_id', user.id)
-      .maybeSingle();
-
-    if (sesiExisting?.status === 'diskualifikasi') {
-      alert('Kamu telah didiskualifikasi dari ujian ini dan tidak dapat masuk kembali.');
-      return;
-    }
-    if (sesiExisting?.status === 'dikunci') {
-      alert('Sesi ujian kamu dikunci. Hubungi pengawas.');
-      return;
-    }
-    if (sesiExisting?.status === 'selesai') {
-      alert('Kamu sudah mengerjakan ujian ini. Tidak bisa mengulang.');
-      return;
-    }
-
-    // Validasi token setelah status sesi aman
+    // Validasi token jika ujian memakai token
     if (ujian.token_ujian) {
       const inputToken = (tokenInput[ujian.id] || '').trim().toUpperCase();
       if (inputToken !== ujian.token_ujian.toUpperCase()) {
@@ -169,6 +119,18 @@ export default function SiswaUjianPage() {
         return;
       }
       setTokenError(prev => ({ ...prev, [ujian.id]: '' }));
+    }
+    // Cek apakah siswa sudah punya sesi untuk ujian ini
+    const { data: sesiExisting } = await supabase
+      .from('sesi_ujian')
+      .select('id, status')
+      .eq('ujian_id', ujian.id)
+      .eq('siswa_id', user.id)
+      .maybeSingle();
+
+    if (sesiExisting?.status === 'selesai') {
+      alert('Kamu sudah mengerjakan ujian ini. Tidak bisa mengulang.');
+      return;
     }
 
     // Ambil soal ujian
@@ -184,9 +146,17 @@ export default function SiswaUjianPage() {
       bobot: su.bobot_override || su.bank_soal?.bobot || 1,
     })) || [];
 
-    const finalSoal = ujian.acak_soal
+    const acakSoal = ujian.acak_soal
       ? [...soal].sort(() => Math.random() - 0.5)
       : soal;
+
+    // Acak pilihan jawaban jika acak_pilihan aktif
+    const finalSoal = ujian.acak_pilihan
+      ? acakSoal.map(s => ({
+          ...s,
+          pilihan: [...(s.pilihan || [])].sort(() => Math.random() - 0.5),
+        }))
+      : acakSoal;
 
     // Jika sesi berlangsung sudah ada (misal browser crash), lanjutkan sesi itu
     let sesiId = sesiExisting?.id;
@@ -253,29 +223,13 @@ export default function SiswaUjianPage() {
         .rpc('hitung_nilai_sesi', { p_sesi_id: sesiId });
       nilaiAkhir = nilaiData ?? 0;
 
-      // 3. Update sesi_ujian: status selesai/diskualifikasi + waktu_selesai + jumlah_pelanggaran
-      const jumlahPelanggaran = result.violations?.length ?? 0;
-      const batasPelanggaran  = ujianSnapshot.batas_pelanggaran ?? 3;
-      const statusAkhir = (result.locked || jumlahPelanggaran >= batasPelanggaran)
-        ? 'diskualifikasi'
-        : 'selesai';
-
-      // Jika sudah diskualifikasi via handleLock (status sudah ditulis ke DB), skip update status
-      // tapi tetap update waktu_selesai & nilai jika belum ada
-      const { data: sesiCurrent } = await supabase
-        .from('sesi_ujian').select('status').eq('id', sesiId).single();
-
-      const updatePayload = {
-        waktu_selesai:      new Date().toISOString(),
-        jumlah_pelanggaran: jumlahPelanggaran,
-        nilai_akhir:        nilaiAkhir,
-      };
-      // Jangan overwrite status diskualifikasi yang sudah tersimpan oleh handleLock
-      if (sesiCurrent?.status !== 'diskualifikasi') {
-        updatePayload.status = statusAkhir;
-      }
-
-      await supabase.from('sesi_ujian').update(updatePayload).eq('id', sesiId);
+      // 3. Update sesi_ujian: status selesai + waktu_selesai + jumlah_pelanggaran
+      await supabase.from('sesi_ujian').update({
+        status:               'selesai',
+        waktu_selesai:        new Date().toISOString(),
+        jumlah_pelanggaran:   result.violations?.length ?? 0,
+        nilai_akhir:          nilaiAkhir,
+      }).eq('id', sesiId);
     } else {
       // Fallback jika sesiId undefined (Bug #7 belum ter-handle): estimasi dari bobot
       const totalBobot  = soalSnapshot.reduce((s, q) => s + (q.bobot || 1), 0);
@@ -289,75 +243,6 @@ export default function SiswaUjianPage() {
   }
 
   if (loading || !user) return null;
-
-  function getWaktuStatus(u) {
-    const now = new Date();
-    const mulai   = u.waktu_mulai   ? new Date(u.waktu_mulai)   : null;
-    const selesai = u.waktu_selesai ? new Date(u.waktu_selesai) : null;
-
-    if (selesai && now > selesai) {
-      const menit = Math.round((now - selesai) / 60000);
-      const jam   = Math.floor(menit / 60);
-      const hari  = Math.floor(jam / 24);
-      const keterangan = hari > 0 ? `${hari} hari` : jam > 0 ? `${jam} jam` : `${menit} menit`;
-      return { status: 'lewat', label: `⛔ Sudah berakhir ${keterangan} lalu`, color: 'bg-red-50 text-red-600 border-red-200' };
-    }
-    if (mulai && now < mulai) {
-      const menit = Math.round((mulai - now) / 60000);
-      const jam   = Math.floor(menit / 60);
-      const hari  = Math.floor(jam / 24);
-      const keterangan = hari > 0 ? `${hari} hari` : jam > 0 ? `${jam} jam ${menit % 60} menit` : `${menit} menit`;
-      return { status: 'belum', label: `🕐 Dimulai dalam ${keterangan}`, color: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
-    }
-    return { status: 'aktif', label: null, color: null };
-  }
-
-  // Deteksi keluar browser — kunci/catat sesi sesuai pengaturan ujian
-  useEffect(() => {
-    if (!examState) return;
-    const ujian = examState.ujian;
-    const sesiId = examState.sesiId;
-
-    const handleUnload = async () => {
-      if (ujian.keluar_browser === 'kunci') {
-        // Langsung kunci sesi
-        navigator.sendBeacon('/api/kunci-sesi', JSON.stringify({ sesiId, alasan: 'Siswa keluar dari browser' }));
-      } else if (ujian.keluar_browser === 'reconnect') {
-        // Simpan waktu keluar untuk cek batas reconnect
-        navigator.sendBeacon('/api/catat-keluar', JSON.stringify({ sesiId }));
-      }
-      // 'lanjut' = tidak lakukan apapun
-    };
-
-    window.addEventListener('beforeunload', handleUnload);
-    return () => window.removeEventListener('beforeunload', handleUnload);
-  }, [examState]);
-
-  // Cek batas reconnect saat siswa masuk kembali
-  useEffect(() => {
-    if (!examState) return;
-    const ujian = examState.ujian;
-    const sesiId = examState.sesiId;
-    if (ujian.keluar_browser !== 'reconnect') return;
-
-    async function cekReconnect() {
-      const { data: sesi } = await supabase
-        .from('sesi_ujian').select('waktu_keluar').eq('id', sesiId).single();
-      if (!sesi?.waktu_keluar) return;
-      const batas = (ujian.batas_reconnect_menit || 5) * 60 * 1000;
-      const selisih = Date.now() - new Date(sesi.waktu_keluar).getTime();
-      if (selisih > batas) {
-        // Waktu reconnect habis — kunci sesi
-        await supabase.from('sesi_ujian').update({
-          status: 'diskualifikasi',
-          alasan_kunci: `Melebihi batas reconnect ${ujian.batas_reconnect_menit} menit`,
-        }).eq('id', sesiId);
-        alert(`Waktu reconnect telah habis. Sesi Anda dikunci.`);
-        setExamState(null);
-      }
-    }
-    cekReconnect();
-  }, [examState]);
 
   if (examState) {
     return (
@@ -433,56 +318,34 @@ export default function SiswaUjianPage() {
                 <div>🎯 Nilai minimum: {u.passing_grade}</div>
               </div>
 
-              {/* Keterangan waktu */}
-              {(() => {
-                const ws = getWaktuStatus(u);
-                if (ws.label) return (
-                  <div className={`w-full py-2 px-3 rounded-lg border text-xs font-semibold text-center mb-3 ${ws.color}`}>
-                    {ws.label}
-                  </div>
-                );
-                return null;
-              })()}
-
-              {diskualifikasiIds.has(u.id) ? (
-                <div className="w-full py-2.5 bg-red-100 text-red-700 text-sm font-bold rounded-lg text-center">
-                  🚫 Kamu telah didiskualifikasi
-                </div>
-              ) : getWaktuStatus(u).status !== 'aktif' ? (
-                <div className="w-full py-2.5 bg-gray-100 text-gray-400 text-sm font-bold rounded-lg text-center cursor-not-allowed">
-                  {getWaktuStatus(u).status === 'lewat' ? '⛔ Ujian Ditutup' : '🔒 Belum Dibuka'}
-                </div>
-              ) : (
-                <>
-                  {/* Input Token jika ujian memakai token */}
-                  {u.token_ujian && (
-                    <div className="mb-3">
-                      <input
-                        type="text"
-                        value={tokenInput[u.id] || ''}
-                        onChange={e => {
-                          setTokenInput(prev => ({ ...prev, [u.id]: e.target.value.toUpperCase() }));
-                          setTokenError(prev => ({ ...prev, [u.id]: '' }));
-                        }}
-                        placeholder="Masukkan token ujian"
-                        maxLength={10}
-                        className={`w-full px-3 py-2 border rounded-lg text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                          tokenError[u.id] ? 'border-red-400 bg-red-50' : 'border-gray-200'
-                        }`}
-                      />
-                      {tokenError[u.id] && (
-                        <p className="text-red-500 text-xs mt-1">{tokenError[u.id]}</p>
-                      )}
-                    </div>
+              {/* Input Token jika ujian memakai token */}
+              {u.token_ujian && (
+                <div className="mb-3">
+                  <input
+                    type="text"
+                    value={tokenInput[u.id] || ''}
+                    onChange={e => {
+                      setTokenInput(prev => ({ ...prev, [u.id]: e.target.value.toUpperCase() }));
+                      setTokenError(prev => ({ ...prev, [u.id]: '' }));
+                    }}
+                    placeholder="Masukkan token ujian"
+                    maxLength={10}
+                    className={`w-full px-3 py-2 border rounded-lg text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      tokenError[u.id] ? 'border-red-400 bg-red-50' : 'border-gray-200'
+                    }`}
+                  />
+                  {tokenError[u.id] && (
+                    <p className="text-red-500 text-xs mt-1">{tokenError[u.id]}</p>
                   )}
-                  <button
-                    onClick={() => startExam(u)}
-                    className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-lg transition-colors"
-                  >
-                    {u.token_ujian ? '🔑 Masuk dengan Token →' : 'Mulai Ujian →'}
-                  </button>
-                </>
+                </div>
               )}
+
+              <button
+                onClick={() => startExam(u)}
+                className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-bold rounded-lg transition-colors"
+              >
+                {u.token_ujian ? '🔑 Masuk dengan Token →' : 'Mulai Ujian →'}
+              </button>
             </div>
           ))}
         </div>
