@@ -330,12 +330,10 @@ export default function SiswaUjianPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {ujianList
             .filter(u => !filterMapel || u.mata_pelajaran_id === filterMapel)
-            .map(u => (
-            {(() => {
+            .map(u => {
               const sesi = sesiMap[u.id];
               const isDiskualifikasi = sesi?.status === 'diskualifikasi';
               const isSelesai        = sesi?.status === 'selesai';
-
               return (
                 <div key={u.id} className={`bg-white rounded-xl border p-5 shadow-sm transition-shadow
                   ${isDiskualifikasi ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:shadow-md'}`}>
@@ -413,7 +411,7 @@ export default function SiswaUjianPage() {
                   </button>
                 </div>
               );
-            })()}
+            })}
           ))}
         </div>
       )}
