@@ -38,12 +38,14 @@ export default function DashboardPage() {
       ]);
       setStats({ totalSiswa, totalUjian, totalSoal, ujianAktif });
     } else {
-      const [{ count: ujianTersedia }, { count: hasilUjian }] = await Promise.all([
+      const [{ count: ujianTersedia }, { count: hasilUjian }, { count: diskualifikasi }] = await Promise.all([
         supabase.from('ujian').select('*', { count: 'exact', head: true }).eq('status', 'aktif'),
         supabase.from('sesi_ujian').select('*', { count: 'exact', head: true })
           .eq('siswa_id', user.id).eq('status', 'selesai'),
+        supabase.from('sesi_ujian').select('*', { count: 'exact', head: true })
+          .eq('siswa_id', user.id).eq('status', 'diskualifikasi'),
       ]);
-      setStats({ ujianTersedia, hasilUjian });
+      setStats({ ujianTersedia, hasilUjian, diskualifikasi });
     }
   }
 
@@ -71,8 +73,11 @@ export default function DashboardPage() {
           </>
         ) : (
           <>
-            <StatCard icon="📝" label="Ujian Tersedia" value={stats?.ujianTersedia ?? '—'} color="text-blue-600" />
-            <StatCard icon="✅" label="Ujian Selesai"  value={stats?.hasilUjian    ?? '—'} color="text-green-600" />
+            <StatCard icon="📝" label="Ujian Tersedia"   value={stats?.ujianTersedia  ?? '—'} color="text-blue-600" />
+            <StatCard icon="✅" label="Ujian Selesai"    value={stats?.hasilUjian     ?? '—'} color="text-green-600" />
+            {(stats?.diskualifikasi ?? 0) > 0 && (
+              <StatCard icon="🔒" label="Dikunci"         value={stats?.diskualifikasi ?? 0}   color="text-red-600" />
+            )}
           </>
         )}
       </div>
