@@ -259,12 +259,23 @@ export default function SiswaUjianPage() {
       const statusAkhir = (result.locked || jumlahPelanggaran >= batasPelanggaran)
         ? 'diskualifikasi'
         : 'selesai';
-      await supabase.from('sesi_ujian').update({
-        status:               statusAkhir,
-        waktu_selesai:        new Date().toISOString(),
-        jumlah_pelanggaran:   jumlahPelanggaran,
-        nilai_akhir:          nilaiAkhir,
-      }).eq('id', sesiId);
+
+      // Jika sudah diskualifikasi via handleLock (status sudah ditulis ke DB), skip update status
+      // tapi tetap update waktu_selesai & nilai jika belum ada
+      const { data: sesiCurrent } = await supabase
+        .from('sesi_ujian').select('status').eq('id', sesiId).single();
+
+      const updatePayload = {
+        waktu_selesai:      new Date().toISOString(),
+        jumlah_pelanggaran: jumlahPelanggaran,
+        nilai_akhir:        nilaiAkhir,
+      };
+      // Jangan overwrite status diskualifikasi yang sudah tersimpan oleh handleLock
+      if (sesiCurrent?.status !== 'diskualifikasi') {
+        updatePayload.status = statusAkhir;
+      }
+
+      await supabase.from('sesi_ujian').update(updatePayload).eq('id', sesiId);
     } else {
       // Fallback jika sesiId undefined (Bug #7 belum ter-handle): estimasi dari bobot
       const totalBobot  = soalSnapshot.reduce((s, q) => s + (q.bobot || 1), 0);
