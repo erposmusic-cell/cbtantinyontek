@@ -161,6 +161,10 @@ export default function SiswaUjianPage() {
       alert('Kamu telah didiskualifikasi dari ujian ini dan tidak dapat masuk kembali.');
       return;
     }
+    if (sesiExisting?.status === 'dikunci') {
+      alert('Sesi ujian kamu dikunci karena keluar dari browser. Hubungi pengawas.');
+      return;
+    }
     if (sesiExisting?.status === 'selesai') {
       alert('Kamu sudah mengerjakan ujian ini. Tidak bisa mengulang.');
       return;
@@ -295,6 +299,53 @@ export default function SiswaUjianPage() {
     }
     return { status: 'aktif', label: null, color: null };
   }
+
+  // Deteksi keluar browser — kunci/catat sesi sesuai pengaturan ujian
+  useEffect(() => {
+    if (!examState) return;
+    const ujian = examState.ujian;
+    const sesiId = examState.sesiId;
+
+    const handleUnload = async () => {
+      if (ujian.keluar_browser === 'kunci') {
+        // Langsung kunci sesi
+        navigator.sendBeacon('/api/kunci-sesi', JSON.stringify({ sesiId, alasan: 'Siswa keluar dari browser' }));
+      } else if (ujian.keluar_browser === 'reconnect') {
+        // Simpan waktu keluar untuk cek batas reconnect
+        navigator.sendBeacon('/api/catat-keluar', JSON.stringify({ sesiId }));
+      }
+      // 'lanjut' = tidak lakukan apapun
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [examState]);
+
+  // Cek batas reconnect saat siswa masuk kembali
+  useEffect(() => {
+    if (!examState) return;
+    const ujian = examState.ujian;
+    const sesiId = examState.sesiId;
+    if (ujian.keluar_browser !== 'reconnect') return;
+
+    async function cekReconnect() {
+      const { data: sesi } = await supabase
+        .from('sesi_ujian').select('waktu_keluar').eq('id', sesiId).single();
+      if (!sesi?.waktu_keluar) return;
+      const batas = (ujian.batas_reconnect_menit || 5) * 60 * 1000;
+      const selisih = Date.now() - new Date(sesi.waktu_keluar).getTime();
+      if (selisih > batas) {
+        // Waktu reconnect habis — kunci sesi
+        await supabase.from('sesi_ujian').update({
+          status: 'diskualifikasi',
+          alasan_kunci: `Melebihi batas reconnect ${ujian.batas_reconnect_menit} menit`,
+        }).eq('id', sesiId);
+        alert(`Waktu reconnect telah habis. Sesi Anda dikunci.`);
+        setExamState(null);
+      }
+    }
+    cekReconnect();
+  }, [examState]);
 
   if (examState) {
     return (
