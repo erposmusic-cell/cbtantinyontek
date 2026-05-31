@@ -456,10 +456,14 @@ export default function ExamScreen({ ujian, soalList, siswa, sesiId, onFinish })
             </div>
             <p className="text-slate-100 text-base leading-relaxed mb-6">{soal.pertanyaan}</p>
 
-            {soal.tipe_soal === 'pilihan_ganda' && <SoalPG soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
-            {soal.tipe_soal === 'mcma'          && <SoalMCMA soal={soal} jawaban={Array.isArray(jawaban[soal.id]) ? jawaban[soal.id] : []} onJawab={setJawabanSoal} />}
-            {soal.tipe_soal === 'benar_salah'   && <SoalBS soal={soal} jawaban={Array.isArray(jawaban[soal.id]) ? jawaban[soal.id] : []} onJawab={setJawabanSoal} />}
-            {soal.tipe_soal === 'essay'         && <SoalEssay jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />}
+            {(() => {
+              const tipe = (soal.tipe_soal || '').trim().toLowerCase();
+              if (tipe === 'pilihan_ganda') return <SoalPG soal={soal} jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />;
+              if (tipe === 'mcma')          return <SoalMCMA soal={soal} jawaban={Array.isArray(jawaban[soal.id]) ? jawaban[soal.id] : []} onJawab={setJawabanSoal} />;
+              if (tipe === 'benar_salah')   return <SoalBS soal={soal} jawaban={Array.isArray(jawaban[soal.id]) ? jawaban[soal.id] : []} onJawab={setJawabanSoal} />;
+              if (tipe === 'essay')         return <SoalEssay jawaban={jawaban[soal.id]} onJawab={setJawabanSoal} />;
+              return <div style={{color:'#f87171',fontSize:'13px',padding:'12px',border:'1px solid #7f1d1d',borderRadius:'8px'}}>Tipe soal tidak dikenal: "{soal.tipe_soal}"</div>;
+            })()}
 
             {/* Submit mobile */}
             <button
