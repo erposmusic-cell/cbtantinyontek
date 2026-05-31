@@ -101,9 +101,12 @@ export default function SiswaUjianPage() {
 
     // Filter: tampilkan ujian jika (a) tidak ada daftar peserta = terbuka untuk semua,
     // atau (b) siswa ini terdaftar dan diizinkan
+    // DAN waktu ujian masih valid (belum mulai atau sedang berlangsung)
+    const now = new Date();
     const ujianTersedia = semuaUjian.filter(u => {
+      // Tampilkan semua ujian aktif — termasuk belum mulai & sudah lewat (dengan keterangan)
       const peserta = pesertaMap[u.id];
-      if (!peserta || peserta.length === 0) return true; // terbuka
+      if (!peserta || peserta.length === 0) return true;
       return peserta.some(p => p.siswa_id === user.id && p.diizinkan);
     });
 
@@ -127,6 +130,16 @@ export default function SiswaUjianPage() {
   }
 
   async function startExam(ujian) {
+    // Validasi waktu ujian
+    const now = new Date();
+    if (ujian.waktu_mulai && new Date(ujian.waktu_mulai) > now) {
+      alert('Ujian belum dimulai. Silakan tunggu waktu ujian.');
+      return;
+    }
+    if (ujian.waktu_selesai && new Date(ujian.waktu_selesai) < now) {
+      alert('Waktu ujian sudah berakhir. Anda tidak dapat mengikuti ujian ini.');
+      return;
+    }
     // Validasi token jika ujian memakai token
     if (ujian.token_ujian) {
       const inputToken = (tokenInput[ujian.id] || '').trim().toUpperCase();
@@ -261,6 +274,28 @@ export default function SiswaUjianPage() {
 
   if (loading || !user) return null;
 
+  function getWaktuStatus(u) {
+    const now = new Date();
+    const mulai   = u.waktu_mulai   ? new Date(u.waktu_mulai)   : null;
+    const selesai = u.waktu_selesai ? new Date(u.waktu_selesai) : null;
+
+    if (selesai && now > selesai) {
+      const menit = Math.round((now - selesai) / 60000);
+      const jam   = Math.floor(menit / 60);
+      const hari  = Math.floor(jam / 24);
+      const keterangan = hari > 0 ? `${hari} hari` : jam > 0 ? `${jam} jam` : `${menit} menit`;
+      return { status: 'lewat', label: `⛔ Sudah berakhir ${keterangan} lalu`, color: 'bg-red-50 text-red-600 border-red-200' };
+    }
+    if (mulai && now < mulai) {
+      const menit = Math.round((mulai - now) / 60000);
+      const jam   = Math.floor(menit / 60);
+      const hari  = Math.floor(jam / 24);
+      const keterangan = hari > 0 ? `${hari} hari` : jam > 0 ? `${jam} jam ${menit % 60} menit` : `${menit} menit`;
+      return { status: 'belum', label: `🕐 Dimulai dalam ${keterangan}`, color: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+    }
+    return { status: 'aktif', label: null, color: null };
+  }
+
   if (examState) {
     return (
       <ExamScreen
@@ -335,9 +370,24 @@ export default function SiswaUjianPage() {
                 <div>🎯 Nilai minimum: {u.passing_grade}</div>
               </div>
 
+              {/* Keterangan waktu */}
+              {(() => {
+                const ws = getWaktuStatus(u);
+                if (ws.label) return (
+                  <div className={`w-full py-2 px-3 rounded-lg border text-xs font-semibold text-center mb-3 ${ws.color}`}>
+                    {ws.label}
+                  </div>
+                );
+                return null;
+              })()}
+
               {diskualifikasiIds.has(u.id) ? (
                 <div className="w-full py-2.5 bg-red-100 text-red-700 text-sm font-bold rounded-lg text-center">
                   🚫 Kamu telah didiskualifikasi
+                </div>
+              ) : getWaktuStatus(u).status !== 'aktif' ? (
+                <div className="w-full py-2.5 bg-gray-100 text-gray-400 text-sm font-bold rounded-lg text-center cursor-not-allowed">
+                  {getWaktuStatus(u).status === 'lewat' ? '⛔ Ujian Ditutup' : '🔒 Belum Dibuka'}
                 </div>
               ) : (
                 <>
