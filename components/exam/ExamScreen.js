@@ -80,8 +80,9 @@ function SoalPG({ soal, jawaban, onJawab }) {
 
 // ── Soal MCMA ────────────────────────────────────────────────
 function SoalMCMA({ soal, jawaban = [], onJawab }) {
-  const toggle = (id) => {
-    const curr = jawaban || [];
+  const toggle = (e, id) => {
+    e.stopPropagation();
+    const curr = Array.isArray(jawaban) ? jawaban : [];
     const next = curr.includes(id) ? curr.filter(x => x !== id) : [...curr, id];
     onJawab(next);
   };
@@ -92,23 +93,23 @@ function SoalMCMA({ soal, jawaban = [], onJawab }) {
       </div>
       <div className="space-y-2.5">
         {soal.pilihan.map(p => {
-          const sel = (jawaban || []).includes(p.id);
+          const sel = (Array.isArray(jawaban) ? jawaban : []).includes(p.id);
           return (
             <div
               key={p.id}
-              onClick={() => toggle(p.id)}
-              className={`flex items-start gap-3 p-3.5 rounded-lg border-2 cursor-pointer transition-all
+              onClick={(e) => toggle(e, p.id)}
+              className={`flex items-start gap-3 p-3.5 rounded-lg border-2 cursor-pointer transition-all select-none
                 ${sel
                   ? 'border-blue-500 bg-blue-900/30 text-blue-200'
                   : 'border-slate-600 bg-slate-900/60 text-slate-300 hover:border-slate-500 hover:bg-slate-800'
                 }`}
             >
-              <span className={`min-w-[24px] h-6 rounded flex items-center justify-center text-xs font-bold shrink-0
+              <span className={`min-w-[24px] h-6 rounded flex items-center justify-center text-xs font-bold shrink-0 pointer-events-none
                 ${sel ? 'bg-blue-600 text-white' : 'bg-slate-600 text-slate-300'}`}>
                 {p.label}
               </span>
-              <span className="flex-1 text-sm">{p.teks}</span>
-              {sel && <span className="text-blue-400">☑</span>}
+              <span className="flex-1 text-sm pointer-events-none">{p.teks}</span>
+              {sel && <span className="text-blue-400 pointer-events-none">☑</span>}
             </div>
           );
         })}
@@ -119,32 +120,41 @@ function SoalMCMA({ soal, jawaban = [], onJawab }) {
 
 // ── Soal Benar/Salah ─────────────────────────────────────────
 function SoalBS({ soal, jawaban = [], onJawab }) {
+  const pilihanBS = soal.pilihan.slice(0, 5);
+
   const set = (idx, val) => {
-    const curr = [...(jawaban || [null,null,null,null,null])];
+    // Selalu buat array sepanjang jumlah pernyataan,
+    // isi dari jawaban sebelumnya agar pernyataan lain tidak hilang
+    const curr = Array.from({ length: pilihanBS.length }, (_, k) =>
+      jawaban[k] !== undefined ? jawaban[k] : null
+    );
     curr[idx] = val;
     onJawab(curr);
   };
+
   return (
     <div>
       <div className="text-xs text-blue-300 bg-blue-900/30 border border-blue-700 rounded-lg px-3 py-2 mb-3">
         📋 Tentukan BENAR atau SALAH untuk setiap pernyataan
       </div>
       <div className="space-y-2">
-        {soal.pilihan.slice(0, 5).map((p, i) => {
-          const val = jawaban?.[i];
+        {pilihanBS.map((p, i) => {
+          const val = jawaban[i];
           return (
             <div key={p.id} className="flex items-center gap-3 p-3 rounded-lg border border-slate-600 bg-slate-900/60 text-slate-300">
               <span className="text-xs font-bold text-blue-400 w-7 shrink-0">{p.label}</span>
               <span className="flex-1 text-sm">{p.teks}</span>
               <div className="flex gap-1.5 shrink-0">
                 <button
-                  onClick={() => set(i, true)}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); set(i, true); }}
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors
                     ${val === true ? 'bg-green-600 text-white' : 'border border-slate-500 text-slate-400 hover:border-green-500'}`}>
                   BENAR
                 </button>
                 <button
-                  onClick={() => set(i, false)}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); set(i, false); }}
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors
                     ${val === false ? 'bg-red-600 text-white' : 'border border-slate-500 text-slate-400 hover:border-red-500'}`}>
                   SALAH
