@@ -140,16 +140,7 @@ export default function SiswaUjianPage() {
       alert('Waktu ujian sudah berakhir. Anda tidak dapat mengikuti ujian ini.');
       return;
     }
-    // Validasi token jika ujian memakai token
-    if (ujian.token_ujian) {
-      const inputToken = (tokenInput[ujian.id] || '').trim().toUpperCase();
-      if (inputToken !== ujian.token_ujian.toUpperCase()) {
-        setTokenError(prev => ({ ...prev, [ujian.id]: 'Token salah. Periksa kembali.' }));
-        return;
-      }
-      setTokenError(prev => ({ ...prev, [ujian.id]: '' }));
-    }
-    // Cek apakah siswa sudah punya sesi untuk ujian ini
+    // Cek status sesi DULU sebelum validasi token
     const { data: sesiExisting } = await supabase
       .from('sesi_ujian')
       .select('id, status')
@@ -162,12 +153,22 @@ export default function SiswaUjianPage() {
       return;
     }
     if (sesiExisting?.status === 'dikunci') {
-      alert('Sesi ujian kamu dikunci karena keluar dari browser. Hubungi pengawas.');
+      alert('Sesi ujian kamu dikunci. Hubungi pengawas.');
       return;
     }
     if (sesiExisting?.status === 'selesai') {
       alert('Kamu sudah mengerjakan ujian ini. Tidak bisa mengulang.');
       return;
+    }
+
+    // Validasi token setelah status sesi aman
+    if (ujian.token_ujian) {
+      const inputToken = (tokenInput[ujian.id] || '').trim().toUpperCase();
+      if (inputToken !== ujian.token_ujian.toUpperCase()) {
+        setTokenError(prev => ({ ...prev, [ujian.id]: 'Token salah. Periksa kembali.' }));
+        return;
+      }
+      setTokenError(prev => ({ ...prev, [ujian.id]: '' }));
     }
 
     // Ambil soal ujian
