@@ -52,12 +52,12 @@ export default function LaporanPage() {
     setLoadingData(true);
     setNotifStatus(null);
 
-    // Ambil semua sesi ujian dengan data siswa
+    // Ambil semua sesi ujian dengan data siswa — termasuk diskualifikasi
     const { data: sesiList } = await supabase
       .from('sesi_ujian')
       .select('*, profiles(nama_lengkap, kelas, nomor_hp_ortu)')
       .eq('ujian_id', ujian.id)
-      .eq('status', 'selesai');
+      .in('status', ['selesai', 'diskualifikasi']);
 
     // Ambil log pelanggaran
     const { data: logList } = await supabase
@@ -73,7 +73,10 @@ export default function LaporanPage() {
       nilai:             s.nilai_akhir ?? 0,
       nomorHPOrtu:       s.profiles?.nomor_hp_ortu || null,
       jumlahPelanggaran: s.jumlah_pelanggaran ?? 0,
-      status:            (s.nilai_akhir ?? 0) >= ujian.passing_grade ? 'lulus' : 'tidak_lulus',
+      alasanKunci:       s.alasan_kunci || null,
+      status:            s.status === 'diskualifikasi'
+                           ? 'diskualifikasi'
+                           : (s.nilai_akhir ?? 0) >= ujian.passing_grade ? 'lulus' : 'tidak_lulus',
     }));
 
     // Agregasi pelanggaran per siswa
@@ -155,10 +158,17 @@ export default function LaporanPage() {
   if (loading || !user) return null;
 
   const stats = laporanData ? {
-    total:    laporanData.siswaList.length,
-    lulus:    laporanData.siswaList.filter(s => s.status === 'lulus').length,
-    rata:     laporanData.siswaList.length
-      ? Math.round(laporanData.siswaList.reduce((a, s) => a + s.nilai, 0) / laporanData.siswaList.length)
+    total:          laporanData.siswaList.length,
+    lulus:          laporanData.siswaList.filter(s => s.status === 'lulus').length,
+    tidakLulus:     laporanData.siswaList.filter(s => s.status === 'tidak_lulus').length,
+    diskualifikasi: laporanData.siswaList.filter(s => s.status === 'diskualifikasi').length,
+    rata:     laporanData.siswaList.filter(s => s.status !== 'diskualifikasi').length
+      ? Math.round(
+          laporanData.siswaList
+            .filter(s => s.status !== 'diskualifikasi')
+            .reduce((a, s) => a + s.nilai, 0)
+          / laporanData.siswaList.filter(s => s.status !== 'diskualifikasi').length
+        )
       : 0,
     pelanggaran: laporanData.logList.length,
   } : null;
@@ -270,6 +280,8 @@ export default function LaporanPage() {
                 {[
                   { label: 'Peserta', value: stats.total, color: 'text-blue-600', bg: 'bg-blue-50' },
                   { label: 'Lulus', value: stats.lulus, color: 'text-green-600', bg: 'bg-green-50' },
+                  { label: 'Tidak Lulus', value: stats.tidakLulus, color: 'text-orange-600', bg: 'bg-orange-50' },
+                  { label: '🔒 Dikunci', value: stats.diskualifikasi, color: 'text-red-700', bg: 'bg-red-50' },
                   { label: 'Rata-rata', value: stats.rata, color: 'text-purple-600', bg: 'bg-purple-50' },
                   { label: 'Pelanggaran', value: stats.pelanggaran, color: 'text-red-600', bg: 'bg-red-50' },
                 ].map(s => (
@@ -304,8 +316,10 @@ export default function LaporanPage() {
                             <td className="px-4 py-3 text-gray-500">{i + 1}</td>
                             <td className="px-4 py-3 font-semibold text-gray-900">{s.nama}</td>
                             <td className="px-4 py-3 text-gray-500">{s.kelas}</td>
-                            <td className={`px-4 py-3 font-bold ${s.nilai >= laporanData.ujian.passing_grade ? 'text-green-600' : 'text-red-600'}`}>
-                              {s.nilai}
+                            <td className={`px-4 py-3 font-bold ${
+                              s.status === 'diskualifikasi' ? 'text-gray-400' :
+                              s.nilai >= laporanData.ujian.passing_grade ? 'text-green-600' : 'text-red-600'}`}>
+                              {s.status === 'diskualifikasi' ? '—' : s.nilai}
                             </td>
                             <td className="px-4 py-3">
                               {s.jumlahPelanggaran > 0
@@ -313,10 +327,21 @@ export default function LaporanPage() {
                                 : <span className="text-green-600">—</span>}
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`text-xs font-bold px-2 py-1 rounded-full
-                                ${s.status === 'lulus' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                {s.status === 'lulus' ? 'LULUS' : 'TIDAK LULUS'}
-                              </span>
+                              {s.status === 'diskualifikasi' ? (
+                                <div>
+                                  <span className="text-xs font-bold px-2 py-1 rounded-full bg-red-100 text-red-700">
+                                    🔒 DIKUNCI
+                                  </span>
+                                  {s.alasanKunci && (
+                                    <p className="text-xs text-red-400 mt-0.5">{s.alasanKunci}</p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className={`text-xs font-bold px-2 py-1 rounded-full
+                                  ${s.status === 'lulus' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                  {s.status === 'lulus' ? 'LULUS' : 'TIDAK LULUS'}
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               {s.nomorHPOrtu ? (
