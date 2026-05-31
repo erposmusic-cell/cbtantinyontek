@@ -239,7 +239,9 @@ export default function SiswaUjianPage() {
         });
 
       if (jawabanRows.length > 0) {
-        await supabase.from('jawaban_siswa').insert(jawabanRows);
+        // upsert dengan onConflict agar tidak duplikat jika submit 2x
+        await supabase.from('jawaban_siswa')
+          .upsert(jawabanRows, { onConflict: 'sesi_id,soal_id', ignoreDuplicates: false });
       }
 
       // 2. Hitung nilai via RPC server (koreksi otomatis PG/MCMA/BS)
